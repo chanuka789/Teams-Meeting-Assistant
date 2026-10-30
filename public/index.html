@@ -1,127 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>APC Interview Assistant</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <meta name="description" content="Live RICS APC interview assistant: hears the assessors, detects questions and shows answers from your competency library and case study." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234c6ef5'/%3E%3Cpath d='M16 8v16M11 12v8M21 12v8M6 15v2M26 15v2' stroke='white' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <script>
+    // Apply the saved theme before the first paint (no flash of the wrong theme)
+    (function () {
+      var t = 'system';
+      try { t = localStorage.getItem('tma_theme') || 'system'; } catch (e) {}
+      var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    })();
+  </script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="dot" id="statusDot"></span>
-      <h1>APC Interview Assistant</h1>
-      <span class="status" id="statusText">Idle</span>
-    </div>
-    <div class="controls">
-      <button id="costBtn" class="ghost cost-badge" title="Cost so far (click for details)">Spent: $0</button>
-      <button id="startBtn" class="primary">Start listening</button>
-      <button id="stopBtn" disabled>Stop</button>
-      <button id="settingsBtn" title="Notes and settings">Notes &amp; settings</button>
-    </div>
-  </header>
-
-  <div class="meter-row">
-    <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
-    <span class="hint" id="meterHint">Audio level</span>
-  </div>
-
-  <main class="layout">
-    <section class="panel answers-panel">
-      <div class="panel-head">
-        <h2>Suggested answers</h2>
-        <button id="clearAnswersBtn" class="ghost small">Clear</button>
-      </div>
-      <form id="askForm" class="ask">
-        <input id="askInput" type="text" placeholder="Type an APC question to get an answer…" autocomplete="off" />
-        <button type="submit">Ask</button>
-      </form>
-      <div id="answers" class="answers">
-        <p class="empty" id="answersEmpty">Answers appear here when an assessor asks a question.</p>
-      </div>
-    </section>
-
-    <section class="panel transcript-panel">
-      <div class="panel-head">
-        <h2>Live transcript <span class="muted">(assessors only)</span></h2>
-        <div>
-          <button id="copyTranscriptBtn" class="ghost small">Copy</button>
-          <button id="clearTranscriptBtn" class="ghost small">Clear</button>
-        </div>
-      </div>
-      <div id="transcript" class="transcript">
-        <p class="empty" id="transcriptEmpty">Press <b>Start listening</b>. This app hears only the meeting audio (what plays from your speakers / headphones), never your microphone.<br><br>
-          <b>Teams desktop app:</b> choose <b>Entire screen</b> and tick <b>Share system audio</b>.<br>
-          <b>Teams in the browser:</b> choose the Teams <b>tab</b> and tick <b>Share tab audio</b>.</p>
-      </div>
-    </section>
-  </main>
-
-  <dialog id="settingsDialog">
-    <form method="dialog" class="settings">
-      <h2>Notes &amp; settings</h2>
-      <label>About you (helps the AI answer as you)
-        <input id="roleInput" type="text" placeholder="e.g. Quantity Surveyor working in the GCC, APC candidate, QS &amp; Construction pathway, consultant side" />
-      </label>
-      <label>Your APC notes (summary of experience, case study, competencies)
-        <textarea id="notesInput" rows="12" placeholder="Paste: summary of experience per competency, case study summary, key projects with values / dates / your role, CPD, ethics examples…"></textarea>
-      </label>
-      <label class="row">
-        <input id="autoAnswerInput" type="checkbox" checked />
-        Answer questions automatically
-      </label>
-      <fieldset class="models">
-        <legend>Your documents <span class="muted">(used to answer questions)</span></legend>
-        <p class="small muted">Upload PDF, Word (.docx), TXT or Markdown files: your summary of experience, case study, RICS guidance, project reports. For each question the app finds the most relevant parts and gives them to the AI. Files stay in this browser.</p>
-        <input id="docInput" type="file" multiple accept=".pdf,.docx,.txt,.md,.csv" />
-        <ul id="docList" class="doc-list"></ul>
-        <p class="small muted" id="docInfo"></p>
-      </fieldset>
-      <fieldset class="models">
-        <legend>AI models <span class="muted">(live list from OpenRouter)</span></legend>
-        <label for="answerModelSearch">Answer model</label>
-        <input id="answerModelSearch" type="search" placeholder="Search models, e.g. claude, gpt, gemini…" autocomplete="off" />
-        <select id="answerModelSelect" aria-label="Answer model"><option>Loading models…</option></select>
-        <label for="reasoningSelect">Thinking level <span class="muted">(higher = more careful, but slower)</span></label>
-        <select id="reasoningSelect"></select>
-        <label for="detectModelSelect">Question detection model <span class="muted">(fast and cheap is best)</span></label>
-        <select id="detectModelSelect"><option>Loading models…</option></select>
-        <label for="sttModelSelect">Speech-to-text model</label>
-        <select id="sttModelSelect"><option>Loading models…</option></select>
-        <div class="models-foot">
-          <p class="muted small" id="modelInfo"></p>
-          <button id="resetModelsBtn" type="button" class="ghost small">Reset to defaults</button>
-        </div>
-      </fieldset>
-      <fieldset class="models">
-        <legend>Cost <span class="muted">(real amounts reported by OpenRouter, USD)</span></legend>
-        <p class="small" id="costInfo"></p>
-        <p class="small muted" id="keyInfo"></p>
-        <div class="models-foot">
-          <span class="muted small">Prices above are per 1M tokens (text) or per hour of audio.</span>
-          <button id="resetCostBtn" type="button" class="ghost small">Reset counter</button>
-        </div>
-      </fieldset>
-      <div class="dialog-actions">
-        <button id="logoutBtn" type="button" class="ghost">Forget password</button>
-        <button value="close" class="primary">Save &amp; close</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="loginDialog">
-    <form id="loginForm" class="settings">
-      <h2>Enter app password</h2>
-      <input id="passwordInput" type="password" autocomplete="current-password" required />
-      <p class="error" id="loginError"></p>
-      <div class="dialog-actions">
-        <button class="primary" type="submit">Unlock</button>
-      </div>
-    </form>
-  </dialog>
-
-  <div id="toast" class="toast" hidden></div>
-
-  <script type="module" src="/app.js"></script>
+  <div id="root"></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <div class="sr-only" id="announcer" aria-live="polite"></div>
+  <script type="module" src="/js/main.js"></script>
 </body>
 </html>

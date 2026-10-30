@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tokenize, chunkText, buildIndex, search } from '../public/knowledge.js';
+import { tokenize, chunkText } from '../lib/knowledge.js';
+import { orQuery } from '../lib/documents.js';
 
 test('tokenize drops stopwords and keeps numbers', () => {
   assert.deepEqual(tokenize('What is the retention under NRM 2? 5%'), ['retention', 'under', 'nrm', '2', '5%']);
@@ -13,14 +14,8 @@ test('chunkText splits long text with overlap', () => {
   assert.ok(chunks.every((c) => c.length <= 360));
 });
 
-test('search ranks the relevant document first', () => {
-  const index = buildIndex([
-    { name: 'falcon.pdf', text: 'The approved cost limit for Project Falcon is AED 48.5 million. Retention is 5% under FIDIC.' },
-    { name: 'ethics.docx', text: 'Conflicts of interest must be declared in writing and informed consent obtained.' },
-    { name: 'nrm.txt', text: 'NRM 1 covers order of cost estimates and elemental cost plans.' },
-  ]);
-  const hits = search(index, 'How do you handle a conflict of interest?');
-  assert.equal(hits[0].doc, 'ethics.docx');
-  assert.equal(search(index, 'What was the cost limit on Falcon?')[0].doc, 'falcon.pdf');
-  assert.deepEqual(search(index, 'the and of'), []);
+test('full-text OR query uses only safe keywords', () => {
+  assert.equal(orQuery('What is the retention under NRM 2? 5%'), 'retention | under | nrm | 2 | 5');
+  assert.equal(orQuery("Talk me through the client's cost & risk!"), 'client | cost | risk');
+  assert.equal(orQuery('the and of'), '');
 });

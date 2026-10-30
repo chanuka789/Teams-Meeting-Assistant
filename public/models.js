@@ -49,15 +49,19 @@ export function toSttModels(raw) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// The answer stream ends with COST_MARK + {"cost": <USD>} when OpenRouter reports the cost.
+// The answer stream ends with COST_MARK + {"cost": <USD or null>, "sources": [{name, scope}]}.
 export const COST_MARK = '\u001e';
 
 export function splitCost(raw) {
   const i = raw.indexOf(COST_MARK);
-  if (i === -1) return { text: raw, cost: null };
-  let cost = null;
-  try { cost = JSON.parse(raw.slice(i + 1)).cost ?? null; } catch { /* trailer still arriving */ }
-  return { text: raw.slice(0, i), cost: typeof cost === 'number' ? cost : null };
+  if (i === -1) return { text: raw, cost: null, sources: [] };
+  let meta = {};
+  try { meta = JSON.parse(raw.slice(i + 1)); } catch { /* trailer still arriving */ }
+  return {
+    text: raw.slice(0, i),
+    cost: typeof meta.cost === 'number' ? meta.cost : null,
+    sources: Array.isArray(meta.sources) ? meta.sources : [],
+  };
 }
 
 export function formatUsd(n) {

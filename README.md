@@ -1,81 +1,69 @@
-# Teams Meeting Assistant
+# APC Interview Assistant
 
-A web app that listens to the **other people** in your Microsoft Teams meeting and shows short suggested answers on screen when someone asks you a question.
+A web app for RICS APC final interviews (Quantity surveying and construction pathway). It listens to the **assessors** in your Microsoft Teams meeting, detects each question and shows a short description plus key points, using a shared **competency library** and your own private **case study**.
 
-Tuned for **RICS APC final interviews** (Quantity Surveying and Construction pathway): answers are a short description plus 3-6 short points (including how I use it as a QS), experience questions use only your notes, technical and ethics answers follow current RICS standards, and the AI leaves out anything it is not sure of.
+- Hears only the other side: it captures the meeting's audio output (screen or tab share), never your microphone. Wear headphones.
+- English only. Filler ("mm-hmm", "okay") and noise are dropped before any AI call.
+- Speech-to-text, question detection and answers all go through **OpenRouter** (one API key, kept on the server).
+- Light and dark mode, separate text sizes for answers and transcript, works on desktop and phone.
 
-- Hears only the other side: it captures the meeting's audio output, not your microphone. With headphones on, your own voice is never in that audio.
-- Speech-to-text and answers both go through **OpenRouter** (one API key).
-- Your notes (project facts, cost plan figures, dates) are used to answer. The AI is told not to invent figures that are not in your notes.
+## Pages
 
-## How to use
+| Page | Who | What |
+|---|---|---|
+| Live interview | everyone | Start/stop listening, live transcript, answer cards with sources, type a question, text size controls |
+| Competency library | everyone reads, admins upload | Documents organised by the 19 QS&C competencies (11 mandatory, 6 core, optional list) plus General RICS guidance; admins can edit the list |
+| My case study | each user | Private case study documents (report, slides with speaker notes, figures); nobody else can open them |
+| Settings | each user | Profile and notes, theme, text sizes, AI models with prices, usage and cost, password |
+| Users | admins | Add users, reset passwords, change roles, see spend per user |
 
-1. Open the app in **Chrome or Edge on Windows** and enter the app password.
-2. Click **Notes & settings** and paste your meeting notes / project context.
-3. Click **Start listening**.
-   - **Teams desktop app:** choose the **Entire screen** tab and tick **Share system audio**.
-   - **Teams in the browser:** choose the Teams **tab** and tick **Share tab audio**.
-4. Keep the app open on a second screen or beside Teams. Answers appear on the left, the transcript on the right.
-5. You can also type a question into the **Ask** box.
-
-To test without a meeting, play a YouTube interview video in a Chrome tab and share that tab with **Share tab audio** ticked. The app never uses your microphone.
+Supported files: PDF, Word (.docx), PowerPoint (.pptx, including speaker notes), TXT, Markdown, CSV, up to 50 MB. Old .doc / .ppt must be saved as .docx / .pptx first. Scanned PDFs need OCR.
 
 ## How it works
 
 ```
-Teams audio ─► browser (screen/tab share audio) ─► voice detection cuts speech at pauses
-   ─► /api/transcribe ─► OpenRouter /audio/transcriptions (Whisper Large v3 Turbo)
-   ─► transcript ─► /api/answer ─► OpenRouter chat (Claude Sonnet 5.5, streamed)
-   ─► "NONE" (ignored) or "Q: … / A: …" card on screen
+Teams audio ─► browser (screen/tab share) ─► voice detection cuts speech at pauses
+  ─► /api/transcribe (OpenRouter speech-to-text, English, filters noise)
+  ─► /api/detect (fast model joins split questions, skips filler and repeats)
+  ─► /api/answer: Postgres full-text search over the library + the user's case study
+       ─► answer model (streamed) ─► answer card with source badges
 ```
 
-The server keeps the OpenRouter key secret; the browser never sees it.
+Storage: original files in a **Railway bucket** (S3-compatible); users, sessions, document text (searchable chunks) and usage in **Railway Postgres**.
 
-## Choosing AI models
+## First run
 
-In **Notes & settings → AI models** you can pick any answer model and speech-to-text model from the live OpenRouter list, and the thinking level. Your choice is saved in your browser. The environment variables below are only the defaults.
-
-## Your documents
-
-In **Notes & settings → Your documents**, upload PDF, Word (.docx), TXT or Markdown files (max 20 MB each). The server only extracts the text; the text is stored in your browser (IndexedDB). For each question the app finds the most relevant passages (keyword search, BM25) and sends up to ~6,000 characters of them with the question. Answer cards show which documents were used (`from: …`). Scanned PDFs need OCR first.
-
-## Question detection
-
-Each piece of speech goes through: English-only filter (drops sound tags, silence hallucinations and non-Latin text) → filler check (mm-hmm, okay… skipped with no AI call) → fast detection model that joins split questions and fixes technical terms → answer model. Questions already answered are not answered again.
-
-## Cost
-
-- Model pickers show prices: answer models per 1M tokens, speech-to-text models per audio hour (or per 1M tokens).
-- Each answer card shows what that answer cost. **Spent** in the top bar is the running total (speech-to-text + answers, including replies where no question was found). Details and **Reset counter** are in **Notes & settings → Cost**.
-- Amounts are the real costs OpenRouter reports for each request (USD). The settings also show the total used on your OpenRouter key.
+Open the app. Because no users exist yet, it shows **Set up your app**: enter your name, a username, a password and the **setup key** (the `APP_PASSWORD` value in Railway). That creates the first admin. Add other users on the **Users** page.
 
 ## Settings (environment variables)
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `OPENROUTER_API_KEY` | yes | – | From https://openrouter.ai/keys |
-| `APP_PASSWORD` | strongly recommended | – | Without it anyone with the URL can use your credits |
-| `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Try `deepgram/nova-3` or `openai/gpt-4o-mini-transcribe` for accuracy |
-| `ANSWER_MODEL` | no | `anthropic/claude-sonnet-5.5` | Any OpenRouter chat model. `anthropic/claude-haiku-5.5` is faster/cheaper, less accurate |
-| `ANSWER_REASONING` | no | `low` | AI thinking level: `low`, `medium`, `high`. Higher = slower. `none` works only with Haiku |
-| `DETECT_MODEL` | no | `anthropic/claude-haiku-5.5` | Fast model that decides if speech is a question (thinking off) |
-| `STT_LANGUAGE` | no | `en` | `auto` to let the model detect |
+| `DATABASE_URL` | yes | – | Railway: `${{Postgres.DATABASE_URL}}` |
+| `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | yes on Railway | – | Bucket reference variables. Without `S3_BUCKET` files go to `./data/uploads` (local development) |
+| `APP_PASSWORD` | recommended | – | Setup key for creating the first admin |
+| `ANSWER_MODEL` | no | `anthropic/claude-sonnet-5.5` | Default; each user can choose in Settings |
+| `ANSWER_REASONING` | no | `low` | Default thinking level |
+| `DETECT_MODEL` | no | `anthropic/claude-haiku-5.5` | Question detection (thinking off) |
+| `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Speech-to-text |
+| `STT_LANGUAGE` | no | `en` | |
 
 ## Run locally
 
 ```bash
-cp .env.example .env   # fill in values
 npm install
-OPENROUTER_API_KEY=... APP_PASSWORD=... npm start
+# Postgres running locally, e.g. postgres://postgres@localhost:5432/tma
+DATABASE_URL=postgres://... OPENROUTER_API_KEY=... APP_PASSWORD=... npm start
 # open http://localhost:3000
 npm test
 ```
 
 ## Deploy
 
-Hosted on Railway. Pushing to `main` redeploys automatically. Health check: `/health`.
+Railway project `teams-meeting-assistant`: services `web` (this repo), `Postgres`, and bucket `documents`. Pushing to the connected branch redeploys. `/health` reports database and storage status.
 
 ## Important
 
-- Tell meeting participants that an AI assistant transcribes the call, and check your company's AI and data policy before using it with client meetings.
+- Tell the assessors that an AI assistant transcribes the call, and check that RICS assessment rules allow it.
 - AI answers can be wrong. Treat them as suggestions.

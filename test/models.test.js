@@ -64,9 +64,10 @@ test('speech-to-text prices by unit', () => {
 });
 
 test('cost trailer and money format', () => {
-  assert.deepEqual(splitCost('Q: x\nA:\n- y'), { text: 'Q: x\nA:\n- y', cost: null });
-  assert.deepEqual(splitCost(`NONE${COST_MARK}{"cost":0.0012}`), { text: 'NONE', cost: 0.0012 });
-  assert.deepEqual(splitCost(`A${COST_MARK}{"co`), { text: 'A', cost: null });
+  assert.deepEqual(splitCost('Q: x\nA:\n- y'), { text: 'Q: x\nA:\n- y', cost: null, sources: [] });
+  assert.deepEqual(splitCost(`NONE${COST_MARK}{"cost":0.0012,"sources":[{"name":"a.pdf","scope":"library"}]}`),
+    { text: 'NONE', cost: 0.0012, sources: [{ name: 'a.pdf', scope: 'library' }] });
+  assert.deepEqual(splitCost(`A${COST_MARK}{"co`), { text: 'A', cost: null, sources: [] });
   assert.equal(formatUsd(0.0012), '$0.0012');
   assert.equal(formatUsd(0.05), '$0.050');
   assert.equal(formatUsd(2.5), '$2.50');
