@@ -3,9 +3,11 @@
 
 import { SpeechSegmenter, resample, encodeWav, bytesToBase64, TARGET_RATE } from '../../audio.js';
 import { splitCost, formatUsd } from '../../models.js';
-import { h, icon, button, toast, announce, switchEl, sizeStepper, emptyState, openModal, timeStr } from '../ui.js';
+import { h, icon, button, toast, announce, switchEl, sizeStepper, emptyState, openModal, timeStr, combobox } from '../ui.js';
 import { api, apiStream } from '../api.js';
-import { pref, setPrefs, onPrefsChange } from '../state.js';
+import { reasoningChoices } from '../../models.js';
+import { chatItems, REASONING_SHORT, REASONING_LABELS, reasoningSelection } from '../model-items.js';
+import { pref, setPrefs, onPrefsChange, loadModels } from '../state.js';
 import { createOverlay, parseAnswer, answerNodes } from './overlay.js';
 import { ANSWER_STYLES } from '../format.js';
 
@@ -74,13 +76,48 @@ export function createLivePage({ onListeningChange }) {
     button('Ask', { icon: 'send', variant: 'primary', type: 'submit' }));
   const styleSel = h('select', { class: 'select select-sm', 'aria-label': 'Answer style', title: 'Answer style (applies to the next answer)',
     onchange: () => setPrefs({ answerStyle: styleSel.value }) },
-  ANSWER_STYLES.map((x) => h('option', { value: x.id, selected: x.id === pref('answerStyle'), title: x.hint }, x.label)));
+  ANSWER_STYLES.map((x) => h('option', { value: x.id, selected: x.id === pref('answerStyle'), title: `${x.label}: ${x.hint}` }, x.short)));
   const answerSize = sizeStepper(pref('answerSize'), { min: 12, max: 36, label: 'answer', onChange: (v) => setPrefs({ answerSize: v }) });
+
+  // Answer model and thinking level, changeable during the interview (same settings as the Settings page)
+  const modelSlot = h('span', { class: 'tool' }, icon('bot'), h('span', { class: 'skeleton', style: { width: '150px', height: '30px' } }));
+  const thinkingSel = h('select', { class: 'select select-sm', 'aria-label': 'Thinking level', title: 'Thinking level: higher is more careful but slower',
+    onchange: () => setPrefs({ reasoning: thinkingSel.value }) });
+  let modelPicker = null;
+  let modelData = null;
+  const chosenModel = () => pref('answerModel') || modelData?.defaults.answerModel;
+  function drawThinking() {
+    if (!modelData) return;
+    const choices = reasoningChoices(modelData.answer.find((m) => m.id === chosenModel()));
+    thinkingSel.disabled = !choices.length;
+    if (!choices.length) { thinkingSel.replaceChildren(h('option', {}, 'Thinking: n/a')); return; }
+    const sel = reasoningSelection(choices, pref('reasoning') || modelData.defaults.reasoning);
+    thinkingSel.replaceChildren(...choices.map((c) => h('option', { value: c, selected: c === sel, title: REASONING_LABELS[c] }, `Thinking: ${REASONING_SHORT[c] || c}`)));
+  }
+  async function setupModelTools() {
+    if (modelPicker) return;
+    try {
+      modelData = await loadModels();
+    } catch {
+      modelSlot.replaceChildren(icon('bot'), h('span', { class: 'subtle small' }, 'Models unavailable'));
+      return;
+    }
+    modelPicker = combobox({
+      items: chatItems(modelData.answer, modelData.defaults.answerModel), value: chosenModel(), compact: true,
+      ariaLabel: 'Answer model', placeholder: 'Search models, e.g. haiku, sonnet, gpt…',
+      onChange: (v) => { setPrefs({ answerModel: v, reasoning: '' }); drawThinking(); },
+    });
+    modelSlot.replaceChildren(icon('bot'), modelPicker);
+    drawThinking();
+  }
+
   const answersPanel = h('section', { class: 'panel', 'aria-labelledby': 'answers-h' },
     h('div', { class: 'panel-head' },
       h('h2', { id: 'answers-h' }, icon('sparkles'), 'Answers'), answerCount,
-      h('span', { class: 'spacer' }), styleSel, answerSize,
+      h('span', { class: 'spacer' }), answerSize,
       button('', { icon: 'eraser', variant: 'ghost', size: 'sm', ariaLabel: 'Clear answers', onClick: clearAnswers })),
+    h('div', { class: 'panel-tools', role: 'toolbar', 'aria-label': 'Answer settings' },
+      modelSlot, thinkingSel, styleSel),
     askForm, answersBody);
 
   // ---------- transcript panel ----------
@@ -121,6 +158,8 @@ export function createLivePage({ onListeningChange }) {
     if ('transcriptSize' in c) transcriptSize.setValue(c.transcriptSize);
     if ('autoAnswer' in c) autoSwitch.querySelector('input').checked = c.autoAnswer;
     if ('answerStyle' in c) styleSel.value = pref('answerStyle');
+    if ('answerModel' in c && modelPicker) { modelPicker.setValue(chosenModel()); drawThinking(); }
+    if ('reasoning' in c && modelData) drawThinking();
     applySizes();
   });
 
@@ -259,7 +298,11 @@ export function createLivePage({ onListeningChange }) {
     refreshStatus();
     try {
       // Style is sent with the question, so a change just before asking is used straight away
-      const res = await apiStream('/api/answer', { latest: question, source, transcript: recentTranscript(), style: pref('answerStyle') });
+      // Style, model and thinking are sent with the question, so a change just before asking is used straight away
+      const res = await apiStream('/api/answer', {
+        latest: question, source, transcript: recentTranscript(),
+        style: pref('answerStyle'), model: pref('answerModel') || undefined, reasoning: pref('reasoning') || undefined,
+      });
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Answer failed');
@@ -425,6 +468,6 @@ export function createLivePage({ onListeningChange }) {
     el,
     stop,
     isListening: () => st.running,
-    onShow() { loadSpend(); },
+    onShow() { loadSpend(); setupModelTools(); },
   };
 }

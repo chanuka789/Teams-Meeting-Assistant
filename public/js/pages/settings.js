@@ -3,6 +3,7 @@
 import { reasoningChoices, formatUsd } from '../../models.js';
 import { h, icon, button, toast, field, segmented, switchEl, combobox } from '../ui.js';
 import { ANSWER_STYLES } from '../format.js';
+import { chatItems, sttItems, REASONING_LABELS, reasoningSelection } from '../model-items.js';
 import { api } from '../api.js';
 import { session, pref, setPrefs, applyTheme, loadModels } from '../state.js';
 
@@ -13,10 +14,6 @@ const SECTIONS = [
   { id: 'usage', label: 'Usage & cost', icon: 'gauge' },
   { id: 'security', label: 'Password', icon: 'key-round' },
 ];
-const REASONING_LABELS = {
-  none: 'Off (fastest)', minimal: 'Minimal', low: 'Low (fast)', medium: 'Medium',
-  high: 'High (slower)', xhigh: 'Extra high (slow)', max: 'Max (slowest)',
-};
 
 const section = (id, title, text, body, foot) => h('section', { class: 'card section', id: `s-${id}`, 'aria-labelledby': `h-${id}` },
   h('div', { class: 'section-head' }, h('h2', { id: `h-${id}` }, title), text && h('p', {}, text)),
@@ -133,37 +130,6 @@ function appearanceSection() {
 }
 
 // ---------- AI models ----------
-const RECOMMENDED = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5'];
-const providerOf = (m) => (m.name.includes(':') ? m.name.split(':')[0] : m.id.split('/')[0]);
-const shortName = (m) => (m.name.includes(':') ? m.name.split(':').slice(1).join(':').trim() : m.name);
-
-// Chat models as combobox items: the default and recommended ones first, then by provider
-function chatItems(models, defaultId) {
-  const tags = (m) => [
-    m.id === defaultId && { text: 'Default', kind: 'accent' },
-    m.input === 0 && m.output === 0 && { text: 'Free', kind: 'success' },
-  ].filter(Boolean);
-  const item = (m, group) => ({
-    value: m.id, label: shortName(m), group,
-    sub: m.input == null ? providerOf(m) : `${providerOf(m)} · $${m.input} in / $${m.output} out per 1M tokens`,
-    tags: tags(m),
-  });
-  const top = [defaultId, ...RECOMMENDED].filter((id, i, a) => a.indexOf(id) === i)
-    .map((id) => models.find((m) => m.id === id)).filter(Boolean);
-  const rest = models.filter((m) => !top.includes(m))
-    .sort((a, b) => providerOf(a).localeCompare(providerOf(b)) || a.name.localeCompare(b.name));
-  return [...top.map((m) => item(m, 'Recommended')), ...rest.map((m) => item(m, providerOf(m)))];
-}
-
-function sttItems(models, defaultId) {
-  const price = (p) => (!p ? 'price: see OpenRouter' : p.perHour != null ? `$${p.perHour} per audio hour` : `$${p.input} in / $${p.output} out per 1M tokens`);
-  const def = models.filter((m) => m.id === defaultId);
-  return [...def, ...models.filter((m) => m.id !== defaultId)].map((m) => ({
-    value: m.id, label: shortName(m), group: m.id === defaultId ? 'Default' : providerOf(m),
-    sub: `${providerOf(m)} · ${price(m.price)}`, tags: m.id === defaultId ? [{ text: 'Default', kind: 'accent' }] : [],
-  }));
-}
-
 function modelsSection() {
   const body = h('div', { class: 'stack', style: { gap: '20px' } }, h('div', { class: 'skeleton', style: { height: '40px' } }), h('div', { class: 'skeleton', style: { height: '40px' } }));
   const auto = switchEl('Answer detected questions automatically', pref('autoAnswer'), (v) => setPrefs({ autoAnswer: v }));
@@ -183,8 +149,7 @@ function modelsSection() {
       const choices = reasoningChoices(model);
       reasoningSel.disabled = !choices.length;
       if (!choices.length) { reasoningSel.replaceChildren(h('option', {}, 'Not used by this model')); return; }
-      const wanted = chosen('reasoning', d.reasoning);
-      const sel = choices.includes(wanted) ? wanted : choices.includes('low') ? 'low' : choices[choices.length - 1];
+      const sel = reasoningSelection(choices, chosen('reasoning', d.reasoning));
       reasoningSel.replaceChildren(...choices.map((c) => h('option', { value: c, selected: c === sel }, REASONING_LABELS[c] || c)));
     };
     const answer = combobox({

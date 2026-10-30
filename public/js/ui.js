@@ -197,7 +197,8 @@ export const timeStr = (d = new Date()) => d.toLocaleTimeString([], { hour: '2-d
 // ---------- searchable select (combobox) ----------
 // items: [{ value, label, sub, group, tags: [{ text, kind }] }]. Type to filter, ↑ ↓ Enter, Esc to close.
 let comboSeq = 0;
-export function combobox({ items, value, ariaLabel, placeholder = 'Search…', onChange }) {
+// compact: small trigger showing only the name (for toolbars); the list opens wider than the trigger.
+export function combobox({ items, value, ariaLabel, placeholder = 'Search…', onChange, compact = false }) {
   const id = `cb${++comboSeq}`;
   let current = value;
   let open = false;
@@ -207,6 +208,7 @@ export function combobox({ items, value, ariaLabel, placeholder = 'Search…', o
   const valueLabel = h('span', { class: 'combo-value' });
   const trigger = h('button', {
     type: 'button', class: 'combo-trigger', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': ariaLabel,
+    title: compact ? ariaLabel : undefined,
   }, valueLabel, icon('chevron-down'));
   const search = h('input', {
     class: 'input', type: 'search', placeholder, autocomplete: 'off', spellcheck: 'false',
@@ -215,12 +217,13 @@ export function combobox({ items, value, ariaLabel, placeholder = 'Search…', o
   const list = h('div', { class: 'combo-list', role: 'listbox', id: `${id}-list`, 'aria-label': ariaLabel });
   const count = h('div', { class: 'combo-count' });
   const pop = h('div', { class: 'combo-pop', hidden: true }, h('div', { class: 'input-icon' }, icon('search'), search), list, count);
-  const wrap = h('div', { class: 'combo' }, trigger, pop);
+  const wrap = h('div', { class: compact ? 'combo combo-compact' : 'combo' }, trigger, pop);
 
   const tagEls = (tags = []) => tags.map((t) => h('span', { class: `badge ${t.kind ? `badge-${t.kind}` : ''}` }, t.text));
 
   function renderValue() {
     const it = items.find((x) => x.value === current);
+    if (compact) { valueLabel.textContent = it ? it.label : 'Choose…'; return; }
     valueLabel.replaceChildren(it
       ? h('span', { class: 'combo-main' }, h('b', {}, it.label), it.sub && h('span', { class: 'subtle' }, it.sub), tagEls(it.tags))
       : h('span', { class: 'subtle' }, 'Choose…'));
@@ -277,6 +280,12 @@ export function combobox({ items, value, ariaLabel, placeholder = 'Search…', o
     trigger.setAttribute('aria-expanded', 'true');
     const r = trigger.getBoundingClientRect();
     pop.classList.toggle('up', r.bottom + 380 > window.innerHeight && r.top > 380);
+    // Compact lists are wider than their trigger: shift them so they stay fully on screen
+    if (compact) {
+      const width = Math.min(420, window.innerWidth - 32);
+      pop.style.width = `${width}px`;
+      pop.style.left = `${Math.max(16 - r.left, Math.min(0, window.innerWidth - 16 - r.left - width))}px`;
+    }
     search.value = '';
     renderList();
     search.focus();

@@ -576,3 +576,15 @@ body.ov-page { margin: 0; height: 100vh; overflow: hidden; background: var(--sur
 /* Dialogs: the body scrolls, header and buttons stay visible */
 dialog.modal > form { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); }
 dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
+
+/* compact combobox (toolbars) */
+.combo-compact .combo-trigger { min-height: 30px; height: 30px; padding: 0 8px 0 10px; font-size: var(--t-sm); border-radius: var(--r-sm); max-width: 220px; }
+.combo-compact .combo-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.combo-compact .combo-trigger > .icon { width: 14px; height: 14px; }
+.combo-compact .combo-pop { right: auto; }
+
+/* Answers toolbar: model, thinking, style and text size */
+.panel-tools { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; padding: var(--s-2) var(--s-4); border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.panel-tools .tool { display: inline-flex; align-items: center; gap: 6px; }
+.panel-tools .tool > .icon { width: 15px; height: 15px; color: var(--text-3); }
+@container (max-width: 520px) { .panel-tools .tool > .icon { display: none; } .combo-compact .combo-trigger { max-width: 150px; } }
