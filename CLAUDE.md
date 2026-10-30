@@ -6,7 +6,7 @@ Live meeting assistant. Browser captures meeting audio (getDisplayMedia system/t
 ## Layout
 - `server.js` – Express server, `/api/transcribe`, `/api/answer` (streams plain text), `/api/config`, `/health`, password check (`x-app-password` header vs `APP_PASSWORD`).
 - `public/models.js` – OpenRouter model list helpers (shared by server and browser, unit tested). `/api/models` serves the live lists (cached 1 h); requests may pass `model` / `reasoning`, validated against the list.
-- `lib/prompt.js` – system prompt, message builder, hallucination filter. Answer format: `NONE` or `Q: …\nA:\n<one sentence per line>` (definition → key facts → main points → "In my role as a QS…" → closing; 7-10 lines, example answer in the prompt). Prompt is tuned for RICS APC final interviews (QS & Construction pathway).
+- `lib/prompt.js` – system prompt, message builder, hallucination filter. Answer format: `NONE` or `Q: …\nA:\n<1-2 sentence description>\n- point` (3-6 points of max 15 words, one "- As a QS, I…" point; example answer in the prompt). Prompt is tuned for RICS APC final interviews (QS & Construction pathway).
 - `public/audio.js` – VAD (`SpeechSegmenter`), resample, WAV encode. Pure, unit tested.
 - `public/app.js` – UI, capture, pipeline. `public/capture-worklet.js` – AudioWorklet.
 - `test/` – `npm test` (node:test).

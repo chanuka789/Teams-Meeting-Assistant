@@ -74,7 +74,9 @@ textarea { width: 100%; resize: vertical; }
 @keyframes flash { from { border-color: var(--ok); } to { border-color: var(--border); } }
 .card .q { font-weight: 600; margin-bottom: 6px; font-size: 15px; }
 .card .a { font-size: 16px; line-height: 1.5; }
-.card .a p { margin: 0 0 7px; }
+.card .a p { margin: 0 0 8px; }
+.card .a ul { margin: 0; padding-left: 20px; }
+.card .a li { margin: 0 0 5px; font-size: 17px; }
 .card .meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; color: var(--muted); font-size: 12px; }
 .card.manual { border-left-color: var(--warn); }
 .cost-badge { font-variant-numeric: tabular-nums; }

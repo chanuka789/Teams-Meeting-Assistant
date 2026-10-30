@@ -306,7 +306,8 @@ function createCard(manual) {
     <div class="meta"><span class="when">${timeStr()}${manual ? ' · typed' : ''}</span>
     <button class="ghost small copy">Copy</button></div>`;
   card.querySelector('.copy').onclick = async () => {
-    try { await navigator.clipboard.writeText([...card.querySelectorAll('.a p')].map((x) => x.textContent).join('\n')); toast('Answer copied'); } catch { /* ignore */ }
+    try { await navigator.clipboard.writeText([...card.querySelectorAll('.a p, .a li')]
+      .map((x) => (x.tagName === 'LI' ? '- ' : '') + x.textContent).join('\n')); toast('Answer copied'); } catch { /* ignore */ }
   };
   els.answers.prepend(card);
   return card;
@@ -315,12 +316,26 @@ function renderCard(card, text) {
   const m = text.match(/^\s*Q:\s*(.*?)\s*(?:\n+\s*A:\s*([\s\S]*))?$/i);
   card.querySelector('.q').textContent = m ? m[1] || '' : '';
   const answer = (m ? m[2] || '' : text).trim();
-  // One sentence per line: show each as its own paragraph so it is easy to scan while speaking
-  card.querySelector('.a').replaceChildren(...answer.split('\n').filter((l) => l.trim()).map((line) => {
-    const p = document.createElement('p');
-    p.textContent = line.trim();
-    return p;
-  }));
+  // Short description as paragraphs, "- " lines as a bullet list
+  const nodes = [];
+  let list = null;
+  for (const raw of answer.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const point = line.match(/^[-•*]\s*(.*)$/);
+    if (point) {
+      if (!list) { list = document.createElement('ul'); nodes.push(list); }
+      const li = document.createElement('li');
+      li.textContent = point[1];
+      list.append(li);
+    } else {
+      list = null;
+      const p = document.createElement('p');
+      p.textContent = line;
+      nodes.push(p);
+    }
+  }
+  card.querySelector('.a').replaceChildren(...nodes);
 }
 els.clearAnswersBtn.onclick = () => { els.answers.innerHTML = ''; };
 
