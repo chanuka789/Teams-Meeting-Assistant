@@ -16,6 +16,8 @@ const config = {
   appPassword: process.env.APP_PASSWORD || '',
   sttModel: process.env.STT_MODEL || 'openai/whisper-large-v3-turbo',
   answerModel: process.env.ANSWER_MODEL || 'anthropic/claude-sonnet-5.5',
+  // Sonnet 5.5 always reasons (no "none"); reasoning tokens count toward max_tokens.
+  answerReasoning: process.env.ANSWER_REASONING || 'low',
   sttLanguage: process.env.STT_LANGUAGE || 'en',
   publicUrl: process.env.PUBLIC_URL || 'https://localhost',
 };
@@ -148,8 +150,9 @@ app.post('/api/answer', async (req, res) => {
         model: config.answerModel,
         messages,
         stream: true,
-        max_tokens: 250,
-        temperature: 0,
+        // Room for reasoning plus the short answer; the prompt keeps the visible answer to 2-4 points.
+        max_tokens: 1500,
+        reasoning: { effort: config.answerReasoning, exclude: true },
       }),
       signal: controller.signal,
     });
@@ -170,6 +173,7 @@ app.post('/api/answer', async (req, res) => {
     const decoder = new TextDecoder();
     let buffer = '';
     let reply = '';
+    let finish = '';
     const started = Date.now();
     for await (const chunk of r.body) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -184,6 +188,7 @@ app.post('/api/answer', async (req, res) => {
           const json = JSON.parse(payload);
           const delta = json.choices?.[0]?.delta?.content;
           if (delta) { reply += delta; res.write(delta); }
+          finish = json.choices?.[0]?.finish_reason || finish;
           if (json.error) {
             console.error('[answer] stream error', json.error.message);
             res.write(`\n[error: ${json.error.message || 'unknown'}]`);
@@ -194,7 +199,7 @@ app.post('/api/answer', async (req, res) => {
       }
     }
     const kind = !reply.trim() ? 'EMPTY' : isNoneReply(reply) ? 'NONE' : 'answered';
-    console.log(`[answer] ${kind} manual=${Boolean(manual)} ${Date.now() - started}ms`);
+    console.log(`[answer] ${kind} manual=${Boolean(manual)} finish=${finish || '-'} ${Date.now() - started}ms`);
     res.end();
   } catch (err) {
     if (err.name === 'AbortError') return; // client went away

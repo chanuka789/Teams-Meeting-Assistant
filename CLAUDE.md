@@ -15,6 +15,7 @@ Live meeting assistant. Browser captures meeting audio (getDisplayMedia system/t
 - Never send the OpenRouter key to the browser.
 - Keep answers short; never let the model invent figures not in notes/transcript.
 - `OPENROUTER_BASE_URL` can point at a mock server for local tests.
+- Claude Sonnet 5.5 on OpenRouter always reasons (effort `none` is rejected) and reasoning tokens count toward `max_tokens`. A small `max_tokens` gives an empty answer, so keep it large and keep answers short through the prompt. Effort is set with `ANSWER_REASONING`.
 
 ## Deploy
 Railway service builds with Railpack from `main` (config in `railway.json`). Secrets live in Railway variables.

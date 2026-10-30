@@ -39,6 +39,7 @@ The server keeps the OpenRouter key secret; the browser never sees it.
 | `APP_PASSWORD` | strongly recommended | – | Without it anyone with the URL can use your credits |
 | `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Try `deepgram/nova-3` or `openai/gpt-4o-mini-transcribe` for accuracy |
 | `ANSWER_MODEL` | no | `anthropic/claude-sonnet-5.5` | Any OpenRouter chat model. `anthropic/claude-haiku-5.5` is faster/cheaper, less accurate |
+| `ANSWER_REASONING` | no | `low` | AI thinking level: `low`, `medium`, `high`. Higher = slower. `none` works only with Haiku |
 | `STT_LANGUAGE` | no | `en` | `auto` to let the model detect |
 
 ## Run locally

@@ -183,6 +183,7 @@ async function getAnswer(latest, manual = false) {
     renderCard(card, text);
   }
   if (!decided && text.trim() && !/^\s*NONE/i.test(text)) { card = createCard(manual); renderCard(card, text); }
+  if (!text.trim()) toast('The AI returned an empty answer. Please try again.', true);
 }
 
 els.askForm.addEventListener('submit', (e) => {
