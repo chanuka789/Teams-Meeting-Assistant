@@ -35,6 +35,12 @@ The server keeps the OpenRouter key secret; the browser never sees it.
 
 In **Notes & settings → AI models** you can pick any answer model and speech-to-text model from the live OpenRouter list, and the thinking level. Your choice is saved in your browser. The environment variables below are only the defaults.
 
+## Cost
+
+- Model pickers show prices: answer models per 1M tokens, speech-to-text models per audio hour (or per 1M tokens).
+- Each answer card shows what that answer cost. **Spent** in the top bar is the running total (speech-to-text + answers, including replies where no question was found). Details and **Reset counter** are in **Notes & settings → Cost**.
+- Amounts are the real costs OpenRouter reports for each request (USD). The settings also show the total used on your OpenRouter key.
+
 ## Settings (environment variables)
 
 | Variable | Required | Default | Notes |

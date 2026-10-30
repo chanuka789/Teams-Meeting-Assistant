@@ -1,5 +1,5 @@
 import { SpeechSegmenter, resample, encodeWav, bytesToBase64, TARGET_RATE } from './audio.js';
-import { reasoningChoices } from './models.js';
+import { reasoningChoices, splitCost, formatUsd } from './models.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -14,6 +14,7 @@ const els = {
   autoAnswerInput: $('autoAnswerInput'), modelInfo: $('modelInfo'), logoutBtn: $('logoutBtn'),
   answerModelSearch: $('answerModelSearch'), answerModelSelect: $('answerModelSelect'),
   reasoningSelect: $('reasoningSelect'), sttModelSelect: $('sttModelSelect'), resetModelsBtn: $('resetModelsBtn'),
+  costBtn: $('costBtn'), costInfo: $('costInfo'), keyInfo: $('keyInfo'), resetCostBtn: $('resetCostBtn'),
   loginDialog: $('loginDialog'), loginForm: $('loginForm'), passwordInput: $('passwordInput'), loginError: $('loginError'),
   toast: $('toast'),
 };
@@ -78,7 +79,14 @@ function saveSettings() {
   store.set('ma_notes', els.notesInput.value);
   store.set('ma_auto', els.autoAnswerInput.checked ? '1' : '0');
 }
-els.settingsBtn.onclick = () => { els.settingsDialog.showModal(); loadModels(); };
+function openSettings() {
+  els.settingsDialog.showModal();
+  loadModels();
+  renderCost();
+  loadKeyUsage();
+}
+els.settingsBtn.onclick = openSettings;
+els.costBtn.onclick = openSettings;
 els.settingsDialog.addEventListener('close', saveSettings);
 els.logoutBtn.onclick = () => { store.del('ma_password'); state.password = ''; els.settingsDialog.close(); showLogin(); };
 
@@ -114,7 +122,12 @@ const findModel = (list, id) => list.find((m) => m.id === id);
 function price(m) {
   if (m.input == null || m.output == null) return '';
   if (m.input === 0 && m.output === 0) return 'free';
-  return `$${m.input} / $${m.output} per 1M tokens`;
+  return `$${m.input} in / $${m.output} out per 1M tokens`;
+}
+function sttPriceLabel(p) {
+  if (!p) return 'price: see OpenRouter';
+  if (p.perHour != null) return `$${p.perHour} per audio hour`;
+  return price(p);
 }
 
 function loadModels() {
@@ -181,7 +194,8 @@ function renderReasoningOptions() {
 function renderSttOptions() {
   const current = chosenSttModel();
   els.sttModelSelect.replaceChildren(...models.stt.map((m) =>
-    new Option(m.id === models.defaults?.sttModel ? `${m.name} — default` : m.name, m.id, false, m.id === current)));
+    new Option(`${m.name} — ${sttPriceLabel(m.price)}${m.id === models.defaults?.sttModel ? ' · default' : ''}`,
+      m.id, false, m.id === current)));
 }
 
 function renderModelInfo() {
@@ -214,6 +228,45 @@ els.resetModelsBtn.onclick = () => {
   els.answerModelSearch.value = '';
   renderModelPickers();
   toast('Models reset to defaults');
+};
+
+// ---------- cost ----------
+// Running total of what OpenRouter charged, kept in this browser until reset.
+function readCost() {
+  try { return { stt: 0, answer: 0, answers: 0, since: Date.now(), ...JSON.parse(store.get('ma_cost') || '{}') }; } catch {
+    return { stt: 0, answer: 0, answers: 0, since: Date.now() };
+  }
+}
+function addCost(kind, amount) {
+  if (typeof amount !== 'number') return;
+  const c = readCost();
+  c[kind] += amount;
+  if (kind === 'answer') c.answers += 1;
+  store.set('ma_cost', JSON.stringify(c));
+  renderCost();
+}
+function renderCost() {
+  const c = readCost();
+  const total = c.stt + c.answer;
+  els.costBtn.textContent = `Spent: ${formatUsd(total)}`;
+  const avg = c.answers ? ` (avg ${formatUsd(c.answer / c.answers)} per AI reply)` : '';
+  els.costInfo.textContent = `Since ${new Date(c.since).toLocaleString()}: speech-to-text ${formatUsd(c.stt)} · `
+    + `answers ${formatUsd(c.answer)}${avg} · total ${formatUsd(total)}`;
+}
+async function loadKeyUsage() {
+  els.keyInfo.textContent = '';
+  try {
+    const res = await apiGet('/api/usage');
+    const u = await res.json();
+    if (!res.ok || typeof u.usage !== 'number') return;
+    const limit = u.limit == null ? 'no spending limit set' : `limit ${formatUsd(u.limit)}, ${formatUsd(u.limitRemaining)} left`;
+    els.keyInfo.textContent = `Your OpenRouter key has used ${formatUsd(u.usage)} in total (${limit}).`;
+  } catch { /* optional info */ }
+}
+els.resetCostBtn.onclick = () => {
+  store.del('ma_cost');
+  renderCost();
+  toast('Cost counter reset');
 };
 
 // ---------- transcript ----------
@@ -250,7 +303,7 @@ function createCard(manual) {
   const card = document.createElement('div');
   card.className = 'card new' + (manual ? ' manual' : '');
   card.innerHTML = `<div class="q"></div><div class="a"></div>
-    <div class="meta"><span class="when">${timeStr()}${manual ? ' · typed' : ''}</span>
+    <div class="meta"><span class="when">${timeStr()}${manual ? ' · typed' : ''}<span class="cost"></span></span>
     <button class="ghost small copy">Copy</button></div>`;
   card.querySelector('.copy').onclick = async () => {
     try { await navigator.clipboard.writeText(card.querySelector('.a').textContent); toast('Answer copied'); } catch { /* ignore */ }
@@ -289,27 +342,31 @@ async function getAnswer(latest, manual = false) {
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let text = '';
+  let raw = '';
   let card = null;
-  let decided = false;
+  let none = false;
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    text += decoder.decode(value, { stream: true });
-    if (!decided) {
+    raw += decoder.decode(value, { stream: true });
+    if (none) continue; // keep reading: the cost arrives at the end
+    const { text } = splitCost(raw);
+    if (!card) {
       const t = text.trimStart();
       if (t.length < 4 && 'NONE'.startsWith(t.toUpperCase())) continue; // still unsure
       if (/^NONE\b/i.test(t)) {                                        // no question
-        reader.cancel();
+        none = true;
         if (state.running) setStatus('Listening · no question detected', 'live');
-        return;
+        continue;
       }
-      decided = true;
       card = createCard(manual);
     }
     renderCard(card, text);
   }
-  if (!decided && text.trim() && !/^\s*NONE/i.test(text)) { card = createCard(manual); renderCard(card, text); }
+  const { text, cost } = splitCost(raw);
+  if (!card && !none && text.trim() && !/^\s*NONE/i.test(text)) { card = createCard(manual); renderCard(card, text); }
+  addCost('answer', cost);
+  if (card && cost !== null) card.querySelector('.cost').textContent = ` · ${formatUsd(cost)}`;
   if (!text.trim()) toast('The AI returned an empty answer. Please try again.', true);
 }
 
@@ -347,6 +404,7 @@ async function handleSegment(samples, sampleRate) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { fillSegment(div, ''); toast(data.error || 'Transcription failed', true); return; }
+    addCost('stt', data.cost);
     const text = (data.text || '').trim();
     fillSegment(div, text);
     if (!text) return;
@@ -439,6 +497,7 @@ els.stopBtn.onclick = stop;
 // ---------- boot ----------
 (async function boot() {
   loadSettings();
+  renderCost();
   if (!navigator.mediaDevices?.getDisplayMedia) {
     toast('This browser cannot capture screen audio. Use Chrome or Edge on a computer.', true);
   }

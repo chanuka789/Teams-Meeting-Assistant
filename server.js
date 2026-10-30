@@ -7,7 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildAnswerMessages, isLikelyHallucination, isNoneReply } from './lib/prompt.js';
-import { isModelId, toAnswerModels, toSttModels, reasoningParam } from './public/models.js';
+import { isModelId, toAnswerModels, toSttModels, reasoningParam, COST_MARK } from './public/models.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -132,6 +132,19 @@ app.get('/api/models', async (req, res) => {
   }
 });
 
+// Spend on this OpenRouter key (total used and limit), shown in settings
+app.get('/api/usage', async (req, res) => {
+  if (!requireKey(res)) return;
+  try {
+    const r = await fetch(`${OPENROUTER}/key`, { headers: orHeaders(), signal: AbortSignal.timeout(10000) });
+    const data = (await r.json().catch(() => ({}))).data;
+    if (!r.ok || !data) return res.status(502).json({ error: `Could not read key usage (${r.status})` });
+    res.json({ usage: data.usage ?? null, limit: data.limit ?? null, limitRemaining: data.limit_remaining ?? null });
+  } catch (err) {
+    res.status(502).json({ error: 'Could not read key usage: ' + err.message });
+  }
+});
+
 // Speech-to-text: one short WAV segment -> text
 app.post('/api/transcribe', async (req, res) => {
   if (!requireKey(res)) return;
@@ -166,7 +179,8 @@ app.post('/api/transcribe', async (req, res) => {
     }
     let text = (data.text || '').trim();
     if (isLikelyHallucination(text)) text = '';
-    res.json({ text, ms: Date.now() - started, usage: data.usage || null });
+    const cost = typeof data.usage?.cost === 'number' ? data.usage.cost : null;
+    res.json({ text, ms: Date.now() - started, cost });
   } catch (err) {
     console.error('[stt] error', err.message);
     res.status(502).json({ error: 'Transcription service error: ' + err.message });
@@ -229,6 +243,7 @@ app.post('/api/answer', async (req, res) => {
     let buffer = '';
     let reply = '';
     let finish = '';
+    let cost = null;
     const started = Date.now();
     for await (const chunk of r.body) {
       buffer += decoder.decode(chunk, { stream: true });
@@ -244,6 +259,7 @@ app.post('/api/answer', async (req, res) => {
           const delta = json.choices?.[0]?.delta?.content;
           if (delta) { reply += delta; res.write(delta); }
           finish = json.choices?.[0]?.finish_reason || finish;
+          if (typeof json.usage?.cost === 'number') cost = json.usage.cost; // last SSE message
           if (json.error) {
             console.error('[answer] stream error', json.error.message);
             res.write(`\n[error: ${json.error.message || 'unknown'}]`);
@@ -254,9 +270,10 @@ app.post('/api/answer', async (req, res) => {
       }
     }
     const kind = !reply.trim() ? 'EMPTY' : isNoneReply(reply) ? 'NONE' : 'answered';
-    console.log(`[answer] ${kind} model=${model.id} reasoning=${reasoning?.effort || '-'} manual=${Boolean(manual)} finish=${finish || '-'} ${Date.now() - started}ms`);
+    console.log(`[answer] ${kind} model=${model.id} reasoning=${reasoning?.effort || '-'} manual=${Boolean(manual)} finish=${finish || '-'} cost=${cost ?? '-'} ${Date.now() - started}ms`);
     // Temporary diagnostic: why spoken text is judged "no question". Remove once tuned.
     if (kind === 'NONE') console.log(`[answer] NONE for: "${String(latest).slice(0, 80)}"`);
+    if (cost !== null) res.write(COST_MARK + JSON.stringify({ cost }));
     res.end();
   } catch (err) {
     if (err.name === 'AbortError') return; // client went away

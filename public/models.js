@@ -32,10 +32,41 @@ export function toAnswerModels(raw) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Speech-to-text prices come in two units: Whisper-class models charge per second of audio
+// (only `prompt` set), newer models charge per token (`completion` also set). A large per-unit
+// prompt price with no completion price has an unclear unit, so no price is shown for it.
+export function sttPrice(pricing = {}) {
+  const p = Number(pricing.prompt) || 0;
+  const c = Number(pricing.completion) || 0;
+  if (c > 0) return { input: perMillion(p), output: perMillion(c) };
+  if (p > 0 && p < 0.01) return { perHour: Math.round(p * 3600 * 1000) / 1000 };
+  return null;
+}
+
 export function toSttModels(raw) {
   return raw
-    .map((m) => ({ id: m.id, name: m.name || m.id }))
+    .map((m) => ({ id: m.id, name: m.name || m.id, price: sttPrice(m.pricing) }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// The answer stream ends with COST_MARK + {"cost": <USD>} when OpenRouter reports the cost.
+export const COST_MARK = '\u001e';
+
+export function splitCost(raw) {
+  const i = raw.indexOf(COST_MARK);
+  if (i === -1) return { text: raw, cost: null };
+  let cost = null;
+  try { cost = JSON.parse(raw.slice(i + 1)).cost ?? null; } catch { /* trailer still arriving */ }
+  return { text: raw.slice(0, i), cost: typeof cost === 'number' ? cost : null };
+}
+
+export function formatUsd(n) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '–';
+  if (n === 0) return '$0';
+  if (n >= 1) return '$' + n.toFixed(2);
+  if (n >= 0.01) return '$' + n.toFixed(3);
+  const s = n.toFixed(6).replace(/0+$/, '');
+  return s === '0.' ? '<$0.000001' : '$' + s;
 }
 
 // Reasoning options that are valid for a model. `none` is only offered when reasoning can be turned off.

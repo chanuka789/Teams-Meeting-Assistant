@@ -76,6 +76,8 @@ textarea { width: 100%; resize: vertical; }
 .card .a { white-space: pre-wrap; font-size: 18px; line-height: 1.45; }
 .card .meta { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; color: var(--muted); font-size: 12px; }
 .card.manual { border-left-color: var(--warn); }
+.cost-badge { font-variant-numeric: tabular-nums; }
+.models p { margin: 0; }
 
 .transcript { flex: 1; overflow-y: auto; padding: 10px 14px; font-size: 14px; line-height: 1.5; }
 .seg { padding: 4px 0; border-bottom: 1px dashed var(--border); }
