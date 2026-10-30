@@ -25,10 +25,19 @@ const section = (id, title, text, body, foot) => h('section', { class: 'card sec
 
 export async function renderSettings(page, { rebuildShell }) {
   const me = session.me;
+  const highlight = (id) => navLinks.forEach((a) => a.setAttribute('aria-current', String(a.dataset.target === id)));
+  let lockUntil = 0; // while a nav click scrolls, keep its item highlighted
   const navLinks = SECTIONS.map((s) => h('a', { href: `#/settings`, 'data-target': s.id, onclick: (e) => {
     e.preventDefault();
-    page.querySelector(`#s-${s.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    navLinks.forEach((a) => a.setAttribute('aria-current', String(a === e.currentTarget)));
+    highlight(s.id);
+    lockUntil = Date.now() + 900;
+    // Scroll the page and the (phone) tab strip separately: a second scrollIntoView would cancel the first
+    const scroller = page.closest('.main');
+    const target = page.querySelector(`#s-${s.id}`);
+    const nav = e.currentTarget.parentElement;
+    const offset = getComputedStyle(nav).position === 'sticky' && nav.scrollWidth > nav.clientWidth ? nav.offsetHeight + 12 : 24;
+    if (target) scroller.scrollTo({ top: target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - offset, behavior: 'smooth' });
+    nav.scrollTo({ left: e.currentTarget.offsetLeft - 16, behavior: 'smooth' });
   } }, icon(s.icon), s.label));
   navLinks[0].setAttribute('aria-current', 'true');
 
@@ -40,15 +49,23 @@ export async function renderSettings(page, { rebuildShell }) {
       h('div', { class: 'stack', style: { gap: '24px' } },
         profileSection(me, rebuildShell), appearanceSection(), modelsSection(), usageSection(me), passwordSection())));
 
-  // Highlight the section in view while scrolling
+  // Highlight the section being read: the last one whose top has passed the upper part of the screen,
+  // or the last section when scrolled to the bottom (short last sections never reach the top)
   const scroller = page.closest('.main');
-  const spy = new IntersectionObserver((entries) => {
-    const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-    if (!visible) return;
-    const id = visible.target.id.replace('s-', '');
-    navLinks.forEach((a) => a.setAttribute('aria-current', String(a.dataset.target === id)));
-  }, { root: scroller, rootMargin: '0px 0px -65% 0px' });
-  page.querySelectorAll('.section').forEach((sec) => spy.observe(sec));
+  const sections = [...page.querySelectorAll('.settings > .stack > *')];
+  let frame = 0;
+  const onScroll = () => {
+    if (!page.isConnected) { scroller.removeEventListener('scroll', onScroll); return; }
+    if (Date.now() < lockUntil || frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
+      const line = scroller.getBoundingClientRect().top + scroller.clientHeight * 0.3;
+      const current = atBottom ? sections[sections.length - 1] : sections.filter((s) => s.getBoundingClientRect().top <= line).pop() || sections[0];
+      highlight(current.id.replace('s-', ''));
+    });
+  };
+  scroller.addEventListener('scroll', onScroll, { passive: true });
 }
 
 // ---------- profile ----------
@@ -56,7 +73,8 @@ function profileSection(me, rebuildShell) {
   const name = h('input', { class: 'input', value: me.name, autocomplete: 'name' });
   const profile = h('textarea', { class: 'textarea', rows: '3', placeholder: 'e.g. Quantity Surveyor working in the GCC, APC candidate, QS & Construction pathway, consultant side, 6 years experience' }, me.profile);
   const notes = h('textarea', { class: 'textarea', rows: '10', placeholder: 'Key facts you want the assistant to use: summary of experience per competency, project values and dates, CPD, ethics examples…' }, me.notes);
-  const save = button('Save profile', { variant: 'primary', icon: 'check', onClick: async () => {
+  const save = button('Save profile', { variant: 'primary', icon: 'check', type: 'submit' });
+  const submit = async () => {
     save.disabled = true;
     try {
       const out = await api('PATCH', '/api/me', { name: name.value, profile: profile.value, notes: notes.value });
@@ -65,12 +83,23 @@ function profileSection(me, rebuildShell) {
       toast('Profile saved');
       if (nameChanged) rebuildShell();
     } catch (e) { toast(e.message, 'error'); } finally { save.disabled = false; }
-  } });
-  return section('profile', 'Profile', 'Used by the assistant to answer as you.', [
+  };
+  return asForm(submit, section('profile', 'Profile', 'Used by the assistant to answer as you.', [
     h('div', { class: 'grid-2' }, field('Name', name), field('Username', h('input', { class: 'input', value: me.username, disabled: true }), 'Ask an admin to change it.')),
     field('About you', profile, 'Your role, region and pathway. Answers use your region’s practice, e.g. GCC: FIDIC and POMI.'),
     field('Notes', notes, 'Short facts that are not in your documents. Long documents belong in My case study.'),
-  ], save);
+  ], save));
+}
+
+// Wrap a section in a form so Enter and password managers work
+function asForm(onSubmit, sectionEl) {
+  const form = h('form', { novalidate: true, onsubmit: (e) => { e.preventDefault(); onSubmit(); } });
+  sectionEl.replaceWith?.(form);
+  form.append(sectionEl);
+  form.id = sectionEl.id;
+  sectionEl.removeAttribute('id');
+  form.className = 'section-form';
+  return form;
 }
 
 // ---------- appearance ----------
@@ -219,7 +248,8 @@ function passwordSection() {
   const current = h('input', { class: 'input', type: 'password', autocomplete: 'current-password' });
   const next = h('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
   const confirm = h('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
-  const save = button('Change password', { variant: 'primary', icon: 'lock', onClick: async () => {
+  const save = button('Change password', { variant: 'primary', icon: 'lock', type: 'submit' });
+  const submit = async () => {
     if (next.value !== confirm.value) { toast('The new passwords do not match.', 'error'); return; }
     save.disabled = true;
     try {
@@ -227,9 +257,11 @@ function passwordSection() {
       current.value = next.value = confirm.value = '';
       toast('Password changed. Other devices were signed out.');
     } catch (e) { toast(e.message, 'error'); } finally { save.disabled = false; }
-  } });
-  return section('security', 'Password', 'At least 8 characters. Changing it signs out your other devices.', [
+  };
+  return asForm(submit, section('security', 'Password', 'At least 8 characters. Changing it signs out your other devices.', [
+    // Hidden username so password managers know which account this is
+    h('input', { type: 'text', autocomplete: 'username', value: session.me.username, hidden: true, readonly: true, 'aria-hidden': 'true', tabindex: '-1' }),
     field('Current password', current),
     h('div', { class: 'grid-2' }, field('New password', next), field('Confirm new password', confirm)),
-  ], save);
+  ], save));
 }

@@ -439,7 +439,7 @@ dialog.modal[open] { animation: pop .18s var(--ease); }
 
 /* ---------- settings ---------- */
 .settings { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--s-8); align-items: start; }
-@media (max-width: 900px) { .settings { grid-template-columns: 1fr; } .settings-nav { position: static !important; flex-direction: row !important; overflow-x: auto; } }
+@media (max-width: 900px) { .settings { grid-template-columns: 1fr; gap: var(--s-4); } .settings-nav { flex-direction: row !important; overflow-x: auto; } }
 .settings-nav { position: sticky; top: var(--s-4); display: flex; flex-direction: column; gap: 2px; }
 .settings-nav a { display: flex; align-items: center; gap: var(--s-3); padding: 8px var(--s-3); border-radius: var(--r-md); color: var(--text-2); font-weight: 500; text-decoration: none; white-space: nowrap; }
 .settings-nav a:hover { background: var(--surface-2); color: var(--text); }
@@ -552,3 +552,27 @@ body.ov-page { margin: 0; height: 100vh; overflow: hidden; background: var(--sur
 .combo-empty { padding: 16px; text-align: center; color: var(--text-3); }
 .combo-count { font-size: var(--t-xs); color: var(--text-3); padding: 0 4px; }
 .select-sm { min-height: 30px; height: 30px; padding: 0 30px 0 10px; font-size: var(--t-sm); border-radius: var(--r-sm); width: auto; background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%; }
+
+/* ---------- review fixes ---------- */
+.input:disabled, .select:disabled, .textarea:disabled { background: var(--surface-2); color: var(--text-3); border-color: var(--border); cursor: not-allowed; }
+.badge.source { max-width: 220px; }
+.ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.answer-foot { row-gap: 6px; }
+/* Panel headers wrap their tools instead of pushing them off the edge */
+.panel { container-type: inline-size; }
+.panel-head { flex-wrap: wrap; row-gap: 6px; }
+@container (max-width: 520px) { .panel-head .badge { display: none; } }
+@container (max-width: 420px) { .panel-head .select-sm { max-width: 150px; } .panel-head h2 { font-size: var(--t-md); } }
+/* Long names never break layouts */
+.doc .meta b, .user-chip .who b, .table .person b { overflow-wrap: anywhere; }
+.page-head h1, .card-pad h2 { overflow-wrap: anywhere; }
+/* Settings section forms behave like sections */
+.section-form { display: block; scroll-margin-top: var(--s-6); }
+@media (max-width: 900px) {
+  .settings-nav { position: sticky !important; top: 0; z-index: 5; margin: 0 calc(-1 * var(--s-4)); padding: var(--s-2) var(--s-4); background: var(--bg); border-bottom: 1px solid var(--border); scrollbar-width: none; }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .section-form, .section { scroll-margin-top: 64px; }
+}
+/* Dialogs: the body scrolls, header and buttons stay visible */
+dialog.modal > form { display: flex; flex-direction: column; max-height: calc(100dvh - 48px); }
+dialog.modal .modal-body { overflow-y: auto; min-height: 0; }

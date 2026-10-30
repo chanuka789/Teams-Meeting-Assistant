@@ -76,6 +76,8 @@ function buildShell() {
     h('div', { class: 'scrim', onclick: () => app.classList.remove('nav-open') }),
     main);
   root.replaceChildren(app);
+  // Phone menu: Esc closes it
+  app.addEventListener('keydown', (e) => { if (e.key === 'Escape' && app.classList.contains('nav-open')) app.classList.remove('nav-open'); });
   return { app, main, navLinks };
 }
 
@@ -86,6 +88,7 @@ async function route() {
     if (path === r.path) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
   document.title = `${r.label} · APC Assistant`;
+  shell.app.classList.remove('nav-open');
   flushPrefs();
   const { main } = shell;
   main.scrollTop = 0;

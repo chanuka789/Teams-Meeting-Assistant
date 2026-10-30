@@ -226,9 +226,13 @@ export function createLivePage({ onListeningChange }) {
       h('div', { class: 'answer-q' }, h('span', { class: 'badge badge-accent' }, 'Q'), qText), body, foot);
     card.addSources = (sources) => {
       const spacer = h('span', { class: 'spacer' });
-      foot.append(...sources.map((s) => (s.scope === 'case_study'
-        ? h('span', { class: 'badge badge-case', title: 'From your case study' }, icon('folder-lock'), s.name)
-        : h('span', { class: 'badge', title: 'From the competency library' }, icon('library'), s.name))), spacer, copyBtn);
+      // Case study first; show three, the rest as "+N"
+      const sorted = [...sources].sort((x, y) => (y.scope === 'case_study') - (x.scope === 'case_study'));
+      const shown = sorted.slice(0, 3).map((s) => (s.scope === 'case_study'
+        ? h('span', { class: 'badge badge-case source', title: `From your case study: ${s.name}` }, icon('folder-lock'), h('span', { class: 'ellipsis' }, s.name))
+        : h('span', { class: 'badge source', title: `From the competency library: ${s.name}` }, icon('library'), h('span', { class: 'ellipsis' }, s.name))));
+      const more = sorted.length > 3 && h('span', { class: 'badge', title: sorted.slice(3).map((s) => s.name).join('\n') }, `+${sorted.length - 3}`);
+      foot.append(...shown, more, spacer, copyBtn);
     };
     card.render = (text) => renderAnswer(qText, body, text);
     answersList.prepend(card);
