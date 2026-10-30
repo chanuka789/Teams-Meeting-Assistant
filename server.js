@@ -255,6 +255,8 @@ app.post('/api/answer', async (req, res) => {
     }
     const kind = !reply.trim() ? 'EMPTY' : isNoneReply(reply) ? 'NONE' : 'answered';
     console.log(`[answer] ${kind} model=${model.id} reasoning=${reasoning?.effort || '-'} manual=${Boolean(manual)} finish=${finish || '-'} ${Date.now() - started}ms`);
+    // Temporary diagnostic: why spoken text is judged "no question". Remove once tuned.
+    if (kind === 'NONE') console.log(`[answer] NONE for: "${String(latest).slice(0, 80)}"`);
     res.end();
   } catch (err) {
     if (err.name === 'AbortError') return; // client went away
