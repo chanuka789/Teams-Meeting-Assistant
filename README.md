@@ -18,7 +18,7 @@ Tuned for **RICS APC final interviews** (Quantity Surveying and Construction pat
 4. Keep the app open on a second screen or beside Teams. Answers appear on the left, the transcript on the right.
 5. You can also type a question into the **Ask** box.
 
-Use **Microphone (testing only)** to try the app without a meeting.
+To test without a meeting, play a YouTube interview video in a Chrome tab and share that tab with **Share tab audio** ticked. The app never uses your microphone.
 
 ## How it works
 

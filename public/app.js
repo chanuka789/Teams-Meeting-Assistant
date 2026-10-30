@@ -3,7 +3,7 @@ import { SpeechSegmenter, resample, encodeWav, bytesToBase64, TARGET_RATE } from
 const $ = (id) => document.getElementById(id);
 const els = {
   statusDot: $('statusDot'), statusText: $('statusText'),
-  sourceSelect: $('sourceSelect'), startBtn: $('startBtn'), stopBtn: $('stopBtn'), settingsBtn: $('settingsBtn'),
+  startBtn: $('startBtn'), stopBtn: $('stopBtn'), settingsBtn: $('settingsBtn'),
   meterFill: $('meterFill'), meterHint: $('meterHint'),
   answers: $('answers'), answersEmpty: $('answersEmpty'), clearAnswersBtn: $('clearAnswersBtn'),
   askForm: $('askForm'), askInput: $('askInput'),
@@ -64,7 +64,6 @@ function loadSettings() {
   els.roleInput.value = store.get('ma_role');
   els.notesInput.value = store.get('ma_notes');
   els.autoAnswerInput.checked = store.get('ma_auto', '1') === '1';
-  els.sourceSelect.value = store.get('ma_source', 'system');
 }
 function saveSettings() {
   store.set('ma_role', els.roleInput.value);
@@ -73,7 +72,6 @@ function saveSettings() {
 }
 els.settingsBtn.onclick = () => els.settingsDialog.showModal();
 els.settingsDialog.addEventListener('close', saveSettings);
-els.sourceSelect.onchange = () => store.set('ma_source', els.sourceSelect.value);
 els.logoutBtn.onclick = () => { store.del('ma_password'); state.password = ''; els.settingsDialog.close(); showLogin(); };
 
 function showLogin(err = '') {
@@ -218,11 +216,9 @@ async function handleSegment(samples, sampleRate) {
 }
 
 // ---------- audio capture ----------
-async function getStream(source) {
-  if (source === 'mic') {
-    return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-  }
-  // Screen / tab share with audio. Video is required by browsers but we ignore it.
+// Meeting (output) audio only, via screen / tab share. The microphone is never used.
+async function getStream() {
+  // Video is required by browsers but we ignore it.
   return navigator.mediaDevices.getDisplayMedia({
     video: { frameRate: 1, width: 320, height: 180 },
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -234,10 +230,9 @@ async function getStream(source) {
 
 async function start() {
   if (state.running) return;
-  const source = els.sourceSelect.value;
   let stream;
   try {
-    stream = await getStream(source);
+    stream = await getStream();
   } catch (e) {
     toast(e.name === 'NotAllowedError' ? 'Sharing was cancelled.' : 'Could not capture audio: ' + e.message, true);
     return;
@@ -274,8 +269,7 @@ async function start() {
   Object.assign(state, { running: true, stream, ctx, node, segmenter });
   els.startBtn.disabled = true;
   els.stopBtn.disabled = false;
-  els.sourceSelect.disabled = true;
-  setStatus(source === 'mic' ? 'Listening (microphone test)' : 'Listening', 'live');
+  setStatus('Listening to meeting audio', 'live');
 }
 
 function stop() {
@@ -288,7 +282,6 @@ function stop() {
   Object.assign(state, { stream: null, ctx: null, node: null, segmenter: null });
   els.startBtn.disabled = false;
   els.stopBtn.disabled = true;
-  els.sourceSelect.disabled = false;
   els.meterFill.style.width = '0';
   els.meterHint.textContent = 'Audio level';
   setStatus('Stopped');

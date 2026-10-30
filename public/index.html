@@ -14,10 +14,6 @@
       <span class="status" id="statusText">Idle</span>
     </div>
     <div class="controls">
-      <select id="sourceSelect" title="Audio source">
-        <option value="system">Meeting audio (screen / tab share)</option>
-        <option value="mic">Microphone (testing only)</option>
-      </select>
       <button id="startBtn" class="primary">Start listening</button>
       <button id="stopBtn" disabled>Stop</button>
       <button id="settingsBtn" title="Notes and settings">Notes &amp; settings</button>
@@ -53,7 +49,9 @@
         </div>
       </div>
       <div id="transcript" class="transcript">
-        <p class="empty" id="transcriptEmpty">Press <b>Start listening</b>, pick your Teams window or tab, and tick <b>Share audio</b>.</p>
+        <p class="empty" id="transcriptEmpty">Press <b>Start listening</b>. This app hears only the meeting audio (what plays from your speakers / headphones), never your microphone.<br><br>
+          <b>Teams desktop app:</b> choose <b>Entire screen</b> and tick <b>Share system audio</b>.<br>
+          <b>Teams in the browser:</b> choose the Teams <b>tab</b> and tick <b>Share tab audio</b>.</p>
       </div>
     </section>
   </main>
