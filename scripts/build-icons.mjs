@@ -9,6 +9,7 @@ const ICONS = [
   'key-round', 'user-plus', 'shield-check', 'menu', 'panel-left', 'arrow-down', 'message-square-text', 'info',
   'triangle-alert', 'circle-check', 'loader-circle', 'book-open', 'briefcase', 'wallet', 'user-round', 'lock',
   'type', 'send', 'eraser', 'headphones', 'cloud-upload', 'folder', 'layers', 'bot', 'gauge', 'eye', 'log-in',
+  'picture-in-picture-2', 'chevron-left', 'captions',
 ];
 
 const out = {};

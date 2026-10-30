@@ -4,7 +4,7 @@ import { api } from './api.js';
 
 export const session = { me: null, models: null };
 
-export const DEFAULT_PREFS = { autoAnswer: true, theme: 'system', answerSize: 17, transcriptSize: 14 };
+export const DEFAULT_PREFS = { autoAnswer: true, theme: 'system', answerSize: 17, transcriptSize: 14, overlaySize: 22 };
 
 export const pref = (k) => session.me?.prefs?.[k] ?? DEFAULT_PREFS[k];
 

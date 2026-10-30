@@ -35,3 +35,10 @@ test('detect and answer messages carry context', () => {
   assert.match(a[1].content, /\[falcon\.pdf\]\nCost limit AED 48\.5m/);
   assert.match(a[1].content, /The assessor asked this question \(always answer/);
 });
+
+test('floating window parses answers into description and points', async () => {
+  const { parseAnswer } = await import('../public/js/format.js');
+  const p = parseAnswer('Q: What is NRM 2?\nA:\nRICS rules for detailed measurement.\n- BOQs\n- Tender pricing');
+  assert.equal(p.question, 'What is NRM 2?');
+  assert.deepEqual(p.blocks, [{ type: 'p', text: 'RICS rules for detailed measurement.' }, { type: 'ul', items: ['BOQs', 'Tender pricing'] }]);
+});

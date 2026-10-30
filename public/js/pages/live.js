@@ -6,6 +6,7 @@ import { splitCost, formatUsd } from '../../models.js';
 import { h, icon, button, toast, announce, switchEl, sizeStepper, emptyState, openModal, timeStr } from '../ui.js';
 import { api, apiStream } from '../api.js';
 import { pref, setPrefs, onPrefsChange } from '../state.js';
+import { createOverlay, parseAnswer, answerNodes } from './overlay.js';
 
 const ANSWER_DELAY_MS = 1200; // a question is often cut into several segments: wait for a short gap
 const METER_BARS = 14;
@@ -16,6 +17,7 @@ export function createLivePage({ onListeningChange }) {
     segments: [],            // { time, text, el }
     pending: { parts: [], els: [], timer: null },
     answered: [],            // recent questions, so the detector skips repeats
+    answers: [],             // { question, text } oldest first, shown in the floating window
     monthSpend: null,
     busy: 0,
   };
@@ -32,10 +34,22 @@ export function createLivePage({ onListeningChange }) {
   const autoSwitch = switchEl('Auto-answer', pref('autoAnswer'), (v) => setPrefs({ autoAnswer: v }));
   const helpBtn = button('', { icon: 'circle-help', variant: 'ghost', ariaLabel: 'How to share Teams audio', onClick: showHelp });
 
+  // Floating answers window (always on top, drag anywhere over the meeting)
+  const overlay = createOverlay({
+    getAnswers: () => st.answers,
+    getStatus: () => (!st.running ? { text: 'Ready', kind: '' } : st.busy > 0 ? { text: 'Answering…', kind: 'busy' } : { text: 'Listening', kind: 'live' }),
+  });
+  const floatBtn = button('Float answers', { icon: 'picture-in-picture-2', onClick: () => (overlay.isOpen() ? overlay.close() : overlay.open().catch((e) => toast(e.message, 'error'))) });
+  floatBtn.title = 'Open the answers in a small window that stays on top of Teams. Drag it anywhere.';
+  overlay.onOpenChange(() => {
+    floatBtn.lastChild.textContent = overlay.isOpen() ? 'Close floating' : 'Float answers';
+    floatBtn.setAttribute('aria-pressed', String(overlay.isOpen()));
+  });
+
   const bar = h('div', { class: 'live-bar' },
     startBtn, stopBtn, pill, meter,
     h('span', { class: 'sep', 'aria-hidden': 'true' }), autoSwitch,
-    h('span', { class: 'spacer' }), spend, helpBtn);
+    h('span', { class: 'spacer' }), spend, floatBtn, helpBtn);
 
   // ---------- answers panel ----------
   const answersBody = h('div', { class: 'panel-body' });
@@ -121,6 +135,7 @@ export function createLivePage({ onListeningChange }) {
     if (!st.running) setStatus('Ready');
     else if (st.busy > 0) setStatus('Answering…', 'busy');
     else setStatus('Listening', 'live');
+    overlay.updateStatus();
   }
   function addSpend(cost) {
     if (typeof cost !== 'number' || st.monthSpend === null) return;
@@ -185,6 +200,8 @@ export function createLivePage({ onListeningChange }) {
   }
   function clearAnswers() {
     answersList.replaceChildren();
+    st.answers = [];
+    overlay.update();
     updateCount();
   }
 
@@ -217,29 +234,18 @@ export function createLivePage({ onListeningChange }) {
 
   // "Q: …\nA:\n<description>\n- point" -> heading + paragraph + bullet list
   function renderAnswer(qText, body, text) {
-    const m = text.match(/^\s*Q:\s*(.*?)\s*(?:\n+\s*A:\s*([\s\S]*))?$/i);
-    if (m && m[1]) qText.textContent = m[1];
-    const answer = (m ? m[2] || '' : text).trim();
-    if (!answer) return;
-    const nodes = [];
-    let list = null;
-    for (const raw of answer.split('\n')) {
-      const line = raw.trim();
-      if (!line) continue;
-      const point = line.match(/^[-•*]\s*(.*)$/);
-      if (point) {
-        if (!list) { list = h('ul'); nodes.push(list); }
-        list.append(h('li', {}, point[1]));
-      } else {
-        list = null;
-        nodes.push(h('p', {}, line));
-      }
-    }
-    body.replaceChildren(...nodes);
+    const { question, blocks } = parseAnswer(text);
+    if (question) qText.textContent = question;
+    if (blocks.length) body.replaceChildren(...answerNodes(blocks));
   }
 
   async function getAnswer(question, source) {
     const card = createCard(question, source);
+    const entry = { question, text: '' };
+    st.answers.push(entry);
+    if (st.answers.length > 50) st.answers.shift();
+    overlay.newAnswer();
+    const show = (text) => { card.render(text); entry.text = text; overlay.update(); };
     st.busy++;
     refreshStatus();
     try {
@@ -257,22 +263,26 @@ export function createLivePage({ onListeningChange }) {
         raw += decoder.decode(value, { stream: true });
         const { text } = splitCost(raw);
         if (/^\s*NONE\b/i.test(text)) continue;
-        card.render(text);
+        show(text);
       }
       const { text, cost, sources } = splitCost(raw);
       addSpend(cost);
       if (!text.trim() || /^\s*NONE\b/i.test(text)) {
         card.remove();
+        st.answers = st.answers.filter((x) => x !== entry);
+        overlay.update();
         updateCount();
         if (source === 'typed') toast('The AI returned no answer. Please try again.', 'error');
         return;
       }
-      card.render(text);
+      show(text);
       card.addSources(sources);
       announce(`New answer: ${card.querySelector('h3').textContent}`);
     } catch (err) {
       card.querySelector('.answer-a').replaceChildren(h('div', { class: 'callout warn' }, icon('triangle-alert'), h('div', {}, err.message)));
       card.addSources([]);
+      entry.text = `Q: ${question}\nA:\n${err.message}`;
+      overlay.update();
     } finally {
       setTimeout(() => card.classList.remove('fresh'), 400);
       st.busy--;

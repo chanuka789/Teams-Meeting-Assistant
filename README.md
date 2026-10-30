@@ -11,7 +11,7 @@ A web app for RICS APC final interviews (Quantity surveying and construction pat
 
 | Page | Who | What |
 |---|---|---|
-| Live interview | everyone | Start/stop listening, live transcript, answer cards with sources, type a question, text size controls |
+| Live interview | everyone | Start/stop listening, live transcript, answer cards with sources, type a question, text size controls, **Float answers**: an always-on-top window (Chrome/Edge) that shows the latest answer like a subtitle and can be dragged over the Teams window |
 | Competency library | everyone reads, admins upload | Documents organised by the 19 QS&C competencies (11 mandatory, 6 core, optional list) plus General RICS guidance; admins can edit the list |
 | My case study | each user | Private case study documents (report, slides with speaker notes, figures); nobody else can open them |
 | Settings | each user | Profile and notes, theme, text sizes, AI models with prices, usage and cost, password |
