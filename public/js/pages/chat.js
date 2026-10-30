@@ -536,10 +536,10 @@ export async function renderChat(page, params) {
       toast('This passage could not be located in the document text.', 'info');
       return;
     }
-    // Restart the temporary highlight on every piece of this passage
-    body.querySelectorAll('mark.flash').forEach((m) => m.classList.remove('flash'));
-    void body.offsetWidth;
-    marks.forEach((m) => m.classList.add('flash'));
+    // All cited places stay lightly highlighted; the current one stays strongly highlighted (with a short pulse)
+    body.querySelectorAll('mark.active').forEach((m) => m.classList.remove('active'));
+    void body.offsetWidth; // restart the pulse animation
+    marks.forEach((m) => m.classList.add('active'));
     const top = marks[0].getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
     body.scrollTo({ top: Math.max(0, top - body.clientHeight * 0.25), behavior: 'smooth' });
   }

@@ -710,9 +710,9 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
 .viewer-nav .pos { font-size: var(--t-sm); color: var(--text-2); padding: 0 4px; font-variant-numeric: tabular-nums; }
 .viewer-body { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: smooth; }
 .doc-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.75; color: var(--text-2); padding: var(--s-6); max-width: 76ch; margin: 0 auto; }
-.doc-text mark { background: transparent; color: inherit; border-radius: 3px; transition: background 1.2s; }
-.doc-text mark.flash { color: var(--text); animation: flash 4.5s var(--ease) forwards; }
-@keyframes flash { 0%, 55% { background: var(--hl); box-shadow: 0 0 0 2px var(--hl); } 100% { background: transparent; box-shadow: none; } }
+.doc-text mark { background: var(--hl-soft); color: var(--text); border-radius: 3px; transition: background .3s, box-shadow .3s; }
+.doc-text mark.active { background: var(--hl); box-shadow: 0 0 0 2px var(--hl); animation: hl-pulse 1.1s var(--ease); }
+@keyframes hl-pulse { 0% { box-shadow: 0 0 0 2px var(--hl); } 35% { box-shadow: 0 0 0 7px var(--hl-soft); } 100% { box-shadow: 0 0 0 2px var(--hl); } }
 .viewer-loading { padding: var(--s-6); display: grid; gap: var(--s-3); }
 .places-pop {
   position: absolute; z-index: 15; left: var(--s-3); right: var(--s-3); top: calc(100% - 4px); max-height: min(60vh, 420px); overflow-y: auto;
