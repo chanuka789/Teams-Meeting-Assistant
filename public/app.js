@@ -172,7 +172,11 @@ async function getAnswer(latest, manual = false) {
     if (!decided) {
       const t = text.trimStart();
       if (t.length < 4 && 'NONE'.startsWith(t.toUpperCase())) continue; // still unsure
-      if (/^NONE\b/i.test(t)) { reader.cancel(); return; }             // no question
+      if (/^NONE\b/i.test(t)) {                                        // no question
+        reader.cancel();
+        if (state.running) setStatus('Listening · no question detected', 'live');
+        return;
+      }
       decided = true;
       card = createCard(manual);
     }
@@ -188,6 +192,19 @@ els.askForm.addEventListener('submit', (e) => {
   els.askInput.value = '';
   getAnswer(q, true);
 });
+
+// A question is often cut into several speech segments: wait for a short gap, then answer them together.
+const ANSWER_DELAY_MS = 1200;
+const pendingAnswer = { parts: [], timer: null };
+function queueAutoAnswer(text) {
+  pendingAnswer.parts.push(text);
+  clearTimeout(pendingAnswer.timer);
+  pendingAnswer.timer = setTimeout(() => {
+    const latest = pendingAnswer.parts.join(' ');
+    pendingAnswer.parts = [];
+    if (latest.split(/\s+/).length >= 3) getAnswer(latest);
+  }, ANSWER_DELAY_MS);
+}
 
 // ---------- speech segment pipeline ----------
 async function handleSegment(samples, sampleRate) {
@@ -205,8 +222,7 @@ async function handleSegment(samples, sampleRate) {
     if (!text) return;
     state.segments.push({ time: new Date(), text });
     if (state.segments.length > 400) state.segments.shift();
-    const words = text.split(/\s+/).length;
-    if (els.autoAnswerInput.checked && words >= 3) getAnswer(text);
+    if (els.autoAnswerInput.checked) queueAutoAnswer(text);
   } catch (e) {
     fillSegment(div, '');
   } finally {

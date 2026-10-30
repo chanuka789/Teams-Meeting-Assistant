@@ -6,7 +6,7 @@ import express from 'express';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { buildAnswerMessages, isLikelyHallucination } from './lib/prompt.js';
+import { buildAnswerMessages, isLikelyHallucination, isNoneReply } from './lib/prompt.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -169,6 +169,8 @@ app.post('/api/answer', async (req, res) => {
     // Parse OpenRouter SSE and forward only the text deltas
     const decoder = new TextDecoder();
     let buffer = '';
+    let reply = '';
+    const started = Date.now();
     for await (const chunk of r.body) {
       buffer += decoder.decode(chunk, { stream: true });
       let idx;
@@ -181,13 +183,18 @@ app.post('/api/answer', async (req, res) => {
         try {
           const json = JSON.parse(payload);
           const delta = json.choices?.[0]?.delta?.content;
-          if (delta) res.write(delta);
-          if (json.error) res.write(`\n[error: ${json.error.message || 'unknown'}]`);
+          if (delta) { reply += delta; res.write(delta); }
+          if (json.error) {
+            console.error('[answer] stream error', json.error.message);
+            res.write(`\n[error: ${json.error.message || 'unknown'}]`);
+          }
         } catch {
           /* partial or non-JSON line, ignore */
         }
       }
     }
+    const kind = !reply.trim() ? 'EMPTY' : isNoneReply(reply) ? 'NONE' : 'answered';
+    console.log(`[answer] ${kind} manual=${Boolean(manual)} ${Date.now() - started}ms`);
     res.end();
   } catch (err) {
     if (err.name === 'AbortError') return; // client went away
