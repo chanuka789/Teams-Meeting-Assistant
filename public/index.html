@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meeting Assistant</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot" id="statusDot"></span>
+      <h1>Meeting Assistant</h1>
+      <span class="status" id="statusText">Idle</span>
+    </div>
+    <div class="controls">
+      <select id="sourceSelect" title="Audio source">
+        <option value="system">Meeting audio (screen / tab share)</option>
+        <option value="mic">Microphone (testing only)</option>
+      </select>
+      <button id="startBtn" class="primary">Start listening</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <button id="settingsBtn" title="Notes and settings">Notes &amp; settings</button>
+    </div>
+  </header>
+
+  <div class="meter-row">
+    <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+    <span class="hint" id="meterHint">Audio level</span>
+  </div>
+
+  <main class="layout">
+    <section class="panel answers-panel">
+      <div class="panel-head">
+        <h2>Suggested answers</h2>
+        <button id="clearAnswersBtn" class="ghost small">Clear</button>
+      </div>
+      <form id="askForm" class="ask">
+        <input id="askInput" type="text" placeholder="Type a question to ask the AI yourself…" autocomplete="off" />
+        <button type="submit">Ask</button>
+      </form>
+      <div id="answers" class="answers">
+        <p class="empty" id="answersEmpty">Answers appear here when someone asks you a question.</p>
+      </div>
+    </section>
+
+    <section class="panel transcript-panel">
+      <div class="panel-head">
+        <h2>Live transcript <span class="muted">(other side only)</span></h2>
+        <div>
+          <button id="copyTranscriptBtn" class="ghost small">Copy</button>
+          <button id="clearTranscriptBtn" class="ghost small">Clear</button>
+        </div>
+      </div>
+      <div id="transcript" class="transcript">
+        <p class="empty" id="transcriptEmpty">Press <b>Start listening</b>, pick your Teams window or tab, and tick <b>Share audio</b>.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" class="settings">
+      <h2>Notes &amp; settings</h2>
+      <label>About you (helps the AI answer as you)
+        <input id="roleInput" type="text" placeholder="e.g. Quantity Surveyor, pre-contract, landscape package" />
+      </label>
+      <label>Meeting notes / project context
+        <textarea id="notesInput" rows="12" placeholder="Paste key facts: project name, cost plan totals, rates, dates, scope, open issues…"></textarea>
+      </label>
+      <label class="row">
+        <input id="autoAnswerInput" type="checkbox" checked />
+        Answer questions automatically
+      </label>
+      <p class="muted small" id="modelInfo"></p>
+      <div class="dialog-actions">
+        <button id="logoutBtn" type="button" class="ghost">Forget password</button>
+        <button value="close" class="primary">Save &amp; close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="loginDialog">
+    <form id="loginForm" class="settings">
+      <h2>Enter app password</h2>
+      <input id="passwordInput" type="password" autocomplete="current-password" required />
+      <p class="error" id="loginError"></p>
+      <div class="dialog-actions">
+        <button class="primary" type="submit">Unlock</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

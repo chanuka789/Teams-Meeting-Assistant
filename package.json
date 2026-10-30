@@ -1,0 +1,19 @@
+{
+  "name": "teams-meeting-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Live AI meeting assistant: listens to the other side of a Teams meeting and shows suggested answers on screen. Uses OpenRouter for speech-to-text and answers.",
+  "main": "server.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
