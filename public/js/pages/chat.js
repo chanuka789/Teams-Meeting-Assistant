@@ -122,8 +122,9 @@ export async function renderChat(page, params) {
     try {
       st.models = await loadModels();
       const d = st.models.defaults;
-      const current = () => pref('chatModel') || pref('answerModel') || d.answerModel;
-      const drawThinking = () => fillThinkingSelect(thinking, st.models.answer.find((m) => m.id === current()), pref('chatReasoning') || pref('reasoning') || d.reasoning, reasoningChoices);
+      // Chat has its own model and thinking level, separate from the Live interview answers
+      const current = () => pref('chatModel') || d.answerModel;
+      const drawThinking = () => fillThinkingSelect(thinking, st.models.answer.find((m) => m.id === current()), pref('chatReasoning') || d.reasoning, reasoningChoices);
       const picker = combobox({
         items: chatItems(st.models.answer, d.answerModel), value: current(), compact: true, ariaLabel: 'Chat model',
         placeholder: 'Search models, e.g. sonnet, opus, gpt…',
@@ -374,7 +375,7 @@ export async function renderChat(page, params) {
 
   async function runAnswer(payload) {
     inner.querySelectorAll('.msg-ai').forEach((x) => x.querySelector('[aria-label="Regenerate answer"]')?.remove());
-    const msg = { role: 'assistant', content: '', sources: [], model: pref('chatModel') || pref('answerModel') || st.models?.defaults.answerModel };
+    const msg = { role: 'assistant', content: '', sources: [], model: pref('chatModel') || st.models?.defaults.answerModel };
     const el = assistantEl(msg, true);
     el.update(msg, false);
     inner.append(el);
@@ -388,7 +389,7 @@ export async function renderChat(page, params) {
       const res = await fetch(`/api/chats/${chatId}/messages`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', signal: controller.signal,
         body: JSON.stringify({
-          ...payload, model: pref('chatModel') || pref('answerModel') || undefined,
+          ...payload, model: pref('chatModel') || undefined,
           reasoning: thinking.disabled ? undefined : thinking.value || undefined, scope: scope.value || 'all', length: length.value,
         }),
       });

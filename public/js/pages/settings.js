@@ -3,7 +3,7 @@
 import { reasoningChoices, formatUsd } from '../../models.js';
 import { h, icon, button, toast, field, segmented, switchEl, combobox } from '../ui.js';
 import { ANSWER_STYLES } from '../format.js';
-import { chatItems, sttItems, REASONING_LABELS, reasoningSelection } from '../model-items.js';
+import { chatItems, sttItems, REASONING_LABELS, reasoningSelection, fillThinkingSelect } from '../model-items.js';
 import { api } from '../api.js';
 import { session, pref, setPrefs, applyTheme, loadModels } from '../state.js';
 
@@ -136,7 +136,7 @@ function modelsSection() {
   const style = h('select', { class: 'select', onchange: () => { setPrefs({ answerStyle: style.value }); toast('Answer style saved'); } },
     ANSWER_STYLES.map((s) => h('option', { value: s.id, selected: s.id === pref('answerStyle') }, `${s.label} — ${s.hint}`)));
   const reset = button('Reset to defaults', { variant: 'ghost', icon: 'eraser' });
-  const el = section('models', 'AI models', 'Live list from OpenRouter with prices. Changes apply to your next question.', [
+  const el = section('models', 'AI models', 'Live list from OpenRouter with prices. Live interview and Chat have separate settings. Changes apply to the next question.', [
     h('div', { class: 'grid-2' }, field('Answer style', style, 'Also on the Live interview screen.'), h('div', { class: 'field', style: { justifyContent: 'flex-end' } }, auto)),
     h('hr', { class: 'divider' }), body], reset);
 
@@ -165,21 +165,37 @@ function modelsSection() {
       items: sttItems(data.stt, d.sttModel), value: chosen('sttModel', d.sttModel), ariaLabel: 'Speech-to-text model',
       placeholder: 'Search speech-to-text models…', onChange: (v) => { setPrefs({ sttModel: v }); toast('Speech-to-text model saved'); },
     });
+    // Chat page: its own model and thinking level
+    const chatThinking = h('select', { class: 'select', onchange: () => setPrefs({ chatReasoning: chatThinking.value }) });
+    const drawChatThinking = () => fillThinkingSelect(chatThinking, data.answer.find((m) => m.id === chosen('chatModel', d.answerModel)),
+      chosen('chatReasoning', d.reasoning), reasoningChoices);
+    const chatModel = combobox({
+      items: chatItems(data.answer, d.answerModel), value: chosen('chatModel', d.answerModel), ariaLabel: 'Chat model',
+      placeholder: 'Search models…', onChange: (v) => { setPrefs({ chatModel: v, chatReasoning: '' }); drawChatThinking(); toast('Chat model saved'); },
+    });
     reset.onclick = () => {
-      setPrefs({ answerModel: '', reasoning: '', detectModel: '', sttModel: '', answerStyle: '' });
-      answer.setValue(d.answerModel); detect.setValue(d.detectModel); stt.setValue(d.sttModel);
+      setPrefs({ answerModel: '', reasoning: '', detectModel: '', sttModel: '', answerStyle: '', chatModel: '', chatReasoning: '' });
+      answer.setValue(d.answerModel); detect.setValue(d.detectModel); stt.setValue(d.sttModel); chatModel.setValue(d.answerModel);
       style.value = pref('answerStyle');
       drawReasoning();
+      drawChatThinking();
       toast('Models reset to defaults');
     };
     drawReasoning();
+    drawChatThinking();
     const labelled = (text, control, hint) => h('div', { class: 'field' }, h('span', { class: 'label' }, text), control, hint && h('div', { class: 'hint' }, hint));
     body.replaceChildren(
       labelled('Answer model', answer, `${data.answer.length} chat models. Writes the answers: stronger models are more accurate but slower.`),
       h('div', { class: 'grid-2' },
         field('Thinking level', reasoningSel, 'Higher is more careful but slower.'),
         labelled('Question detection model', detect, 'Decides if speech is a question. Fast and cheap is best.')),
-      labelled('Speech-to-text model', stt, `${data.stt.length} models. English only.`));
+      labelled('Speech-to-text model', stt, `${data.stt.length} models. English only.`),
+      h('hr', { class: 'divider' }),
+      h('div', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'label' }, 'Chat page'),
+        h('span', { class: 'hint' }, 'The Chat page has its own model and thinking level, separate from the Live interview answers.')),
+      h('div', { class: 'grid-2' },
+        labelled('Chat model', chatModel),
+        field('Chat thinking level', chatThinking)));
   }).catch((e) => body.replaceChildren(h('div', { class: 'callout warn' }, icon('triangle-alert'), h('div', {}, e.message))));
   return el;
 }

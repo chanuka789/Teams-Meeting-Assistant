@@ -753,3 +753,34 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
   .composer-hint .kbd-hint { display: none; }
   .doc-text { padding: var(--s-4); }
 }
+
+/* ---------- collapsible sidebar (rail: icons with short labels) ---------- */
+.app { transition: grid-template-columns .22s var(--ease); }
+.brand-row { display: flex; align-items: center; gap: var(--s-2); }
+.brand-row .brand { flex: 1; min-width: 0; }
+.sidebar-toggle .icon { transition: transform .2s var(--ease); }
+.nav a .short, .theme-cycle { display: none; }
+.nav a .lbl { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 961px) {
+  .app.rail { --sidebar-w: 88px; }
+  .app.rail .sidebar { padding: var(--s-3) var(--s-2); align-items: stretch; }
+  .app.rail .brand-row { flex-direction: column; gap: var(--s-2); padding-bottom: var(--s-2); }
+  .app.rail .brand { padding: var(--s-1) 0 0; justify-content: center; }
+  .app.rail .brand > div:not(.logo) { display: none; }
+  .app.rail .sidebar-toggle .icon { transform: scaleX(-1); }
+  .app.rail .nav-label { height: 1px; padding: 0; margin: var(--s-2) var(--s-3); background: var(--border); }
+  .app.rail .nav-label span { display: none; }
+  .app.rail .nav a { flex-direction: column; justify-content: center; gap: 4px; height: auto; min-height: 56px; padding: 8px 4px; text-align: center; }
+  .app.rail .nav a .icon { width: 20px; height: 20px; }
+  .app.rail .nav a .lbl { display: none; }
+  .app.rail .nav a .short { display: block; font-size: 11px; font-weight: 500; line-height: 1.2; }
+  .app.rail .nav .live-dot { position: absolute; top: 8px; right: 18px; margin: 0; }
+  .app.rail .theme-switch { display: none; }
+  .app.rail .theme-cycle { display: flex; }
+  .app.rail .user-chip { flex-direction: column; gap: var(--s-1); padding: var(--s-2) 0; }
+  .app.rail .user-chip .who { display: none; }
+}
+.theme-cycle { flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 8px 4px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-2); cursor: pointer; font-size: 11px; font-weight: 500; }
+.theme-cycle:hover { background: var(--surface-2); color: var(--text); }
+.theme-cycle .icon { width: 20px; height: 20px; }
+@media (max-width: 960px) { .sidebar-toggle { display: none; } }
