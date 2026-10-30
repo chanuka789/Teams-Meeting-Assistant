@@ -6,7 +6,11 @@ import express from 'express';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { buildAnswerMessages, isLikelyHallucination, isNoneReply } from './lib/prompt.js';
+import {
+  buildAnswerMessages, buildDetectMessages, parseDetectReply, isFillerOnly,
+  isLikelyHallucination, isMostlyNonLatin, stripSoundTags, isNoneReply,
+} from './lib/prompt.js';
+import { extractText, docKind, MAX_DOC_BYTES } from './lib/extract.js';
 import { isModelId, toAnswerModels, toSttModels, reasoningParam, COST_MARK } from './public/models.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +21,8 @@ const config = {
   appPassword: process.env.APP_PASSWORD || '',
   sttModel: process.env.STT_MODEL || 'openai/whisper-large-v3-turbo',
   answerModel: process.env.ANSWER_MODEL || 'anthropic/claude-sonnet-5.5',
+  // Fast, cheap model that decides whether speech is a question before the answer model is called
+  detectModel: process.env.DETECT_MODEL || 'anthropic/claude-haiku-5.5',
   // Default thinking level. Sonnet 5.5 always reasons (no "none"); reasoning tokens count toward max_tokens.
   answerReasoning: process.env.ANSWER_REASONING || 'low',
   sttLanguage: process.env.STT_LANGUAGE || 'en',
@@ -28,7 +34,7 @@ const MAX_AUDIO_BASE64 = 8 * 1024 * 1024; // ~6 MB of audio, far more than one s
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '30mb' })); // document uploads arrive as base64
 
 // Basic security headers
 app.use((req, res, next) => {
@@ -50,6 +56,7 @@ app.get('/api/config', (req, res) => {
     sttModel: config.sttModel,
     answerModel: config.answerModel,
     answerReasoning: config.answerReasoning,
+    detectModel: config.detectModel,
   });
 });
 
@@ -124,7 +131,10 @@ app.get('/api/models', async (req, res) => {
     res.json({
       answer,
       stt,
-      defaults: { answerModel: config.answerModel, sttModel: config.sttModel, reasoning: config.answerReasoning },
+      defaults: {
+        answerModel: config.answerModel, sttModel: config.sttModel, reasoning: config.answerReasoning,
+        detectModel: config.detectModel,
+      },
     });
   } catch (err) {
     console.error('[models]', err.message);
@@ -177,8 +187,9 @@ app.post('/api/transcribe', async (req, res) => {
       console.error('[stt]', r.status, msg);
       return res.status(502).json({ error: msg });
     }
-    let text = (data.text || '').trim();
-    if (isLikelyHallucination(text)) text = '';
+    // English only: drop sound tags, known silence hallucinations and non-Latin-script text
+    let text = stripSoundTags(data.text || '');
+    if (isLikelyHallucination(text) || isMostlyNonLatin(text)) text = '';
     const cost = typeof data.usage?.cost === 'number' ? data.usage.cost : null;
     res.json({ text, ms: Date.now() - started, cost });
   } catch (err) {
@@ -187,10 +198,76 @@ app.post('/api/transcribe', async (req, res) => {
   }
 });
 
-// Answer: recent transcript + latest utterance -> streamed "NONE" or "Q:/A:" text
+// Question detection: latest speech + recent transcript -> { question | null } using a fast model
+app.post('/api/detect', async (req, res) => {
+  if (!requireKey(res)) return;
+  const { latest = '', transcript = '', answered = [] } = req.body || {};
+  const text = String(latest).trim();
+  if (!text || isFillerOnly(text)) return res.json({ question: null, skipped: true, cost: 0 });
+  const model = await pickModel(req.body.model, config.detectModel, 'answer');
+  if (model.error) return res.status(400).json({ error: model.error });
+  const started = Date.now();
+  try {
+    const reasoning = model.info ? reasoningParam(model.info, 'none') : undefined;
+    const r = await fetch(`${OPENROUTER}/chat/completions`, {
+      method: 'POST',
+      headers: orHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        model: model.id,
+        messages: buildDetectMessages({
+          latest: text.slice(0, 2000),
+          transcript: String(transcript).slice(-2500),
+          answered: (Array.isArray(answered) ? answered : []).slice(-5).map((q) => String(q).slice(0, 300)),
+        }),
+        // Lowest reasoning the model allows; room for it plus a one-line reply
+        max_tokens: reasoning && reasoning.effort !== 'none' ? 1500 : 150,
+        ...(reasoning && { reasoning }),
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = data?.error?.message || `Question detection failed (${r.status})`;
+      console.error('[detect]', r.status, msg);
+      return res.status(502).json({ error: msg });
+    }
+    const question = parseDetectReply(data.choices?.[0]?.message?.content);
+    const cost = typeof data.usage?.cost === 'number' ? data.usage.cost : null;
+    // Temporary diagnostic while tuning detection. Remove once tuned.
+    console.log(`[detect] ${question ? 'QUESTION' : 'none'} ${Date.now() - started}ms cost=${cost ?? '-'} for: "${text.slice(0, 80)}"`
+      + (question ? ` -> "${question.slice(0, 80)}"` : ''));
+    res.json({ question, cost });
+  } catch (err) {
+    console.error('[detect] error', err.message);
+    res.status(502).json({ error: 'Question detection error: ' + err.message });
+  }
+});
+
+// Knowledge documents: uploaded file (base64) -> plain text. Documents are stored in the browser, not here.
+app.post('/api/extract', async (req, res) => {
+  const { name = '', data = '' } = req.body || {};
+  if (!docKind(name)) return res.status(400).json({ error: 'Unsupported file type. Use PDF, Word (.docx), TXT or Markdown.' });
+  const buffer = Buffer.from(String(data), 'base64');
+  if (!buffer.length) return res.status(400).json({ error: 'The file is empty.' });
+  if (buffer.length > MAX_DOC_BYTES) return res.status(413).json({ error: 'File is larger than 20 MB.' });
+  try {
+    const text = await extractText(name, buffer);
+    if (!text) return res.status(422).json({ error: 'No text found. If this is a scanned PDF, it needs OCR first.' });
+    res.json({ text, chars: text.length });
+  } catch (err) {
+    console.error('[extract]', err.message);
+    res.status(422).json({ error: 'Could not read this file: ' + err.message });
+  }
+});
+
+// Answer: recent transcript + question -> streamed "NONE" or "Q:/A:" text
 app.post('/api/answer', async (req, res) => {
   if (!requireKey(res)) return;
   const { latest = '', transcript = '', notes = '', role = '', manual = false } = req.body || {};
+  const source = ['typed', 'detected', 'speech'].includes(req.body?.source) ? req.body.source : manual ? 'typed' : 'speech';
+  const knowledge = (Array.isArray(req.body?.knowledge) ? req.body.knowledge : []).slice(0, 10)
+    .map((k) => ({ doc: String(k?.doc || 'document').slice(0, 200), text: String(k?.text || '').slice(0, 2000) }))
+    .filter((k) => k.text);
   if (!latest.trim()) return res.status(400).json({ error: 'Missing latest text.' });
   const model = await pickModel(req.body.model, config.answerModel, 'answer');
   if (model.error) return res.status(400).json({ error: model.error });
@@ -205,7 +282,8 @@ app.post('/api/answer', async (req, res) => {
     transcript: String(transcript).slice(-6000),
     notes: String(notes).slice(0, 60000),
     role: String(role).slice(0, 500),
-    manual: Boolean(manual),
+    source,
+    knowledge,
   });
 
   const controller = new AbortController();
@@ -270,7 +348,7 @@ app.post('/api/answer', async (req, res) => {
       }
     }
     const kind = !reply.trim() ? 'EMPTY' : isNoneReply(reply) ? 'NONE' : 'answered';
-    console.log(`[answer] ${kind} model=${model.id} reasoning=${reasoning?.effort || '-'} manual=${Boolean(manual)} finish=${finish || '-'} cost=${cost ?? '-'} ${Date.now() - started}ms`);
+    console.log(`[answer] ${kind} model=${model.id} reasoning=${reasoning?.effort || '-'} source=${source} docs=${knowledge.length} finish=${finish || '-'} cost=${cost ?? '-'} ${Date.now() - started}ms`);
     // Temporary diagnostic: why spoken text is judged "no question". Remove once tuned.
     if (kind === 'NONE') console.log(`[answer] NONE for: "${String(latest).slice(0, 80)}"`);
     if (cost !== null) res.write(COST_MARK + JSON.stringify({ cost }));

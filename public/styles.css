@@ -108,3 +108,8 @@ dialog::backdrop { background: rgba(0,0,0,.55); }
 .models select, .models input { width: 100%; }
 .models-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
 .models-foot p { margin: 0; }
+.doc-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.doc-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.doc-list li span { overflow-wrap: anywhere; }
+.card .meta .sources { margin-left: 6px; }

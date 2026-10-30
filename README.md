@@ -35,6 +35,14 @@ The server keeps the OpenRouter key secret; the browser never sees it.
 
 In **Notes & settings → AI models** you can pick any answer model and speech-to-text model from the live OpenRouter list, and the thinking level. Your choice is saved in your browser. The environment variables below are only the defaults.
 
+## Your documents
+
+In **Notes & settings → Your documents**, upload PDF, Word (.docx), TXT or Markdown files (max 20 MB each). The server only extracts the text; the text is stored in your browser (IndexedDB). For each question the app finds the most relevant passages (keyword search, BM25) and sends up to ~6,000 characters of them with the question. Answer cards show which documents were used (`from: …`). Scanned PDFs need OCR first.
+
+## Question detection
+
+Each piece of speech goes through: English-only filter (drops sound tags, silence hallucinations and non-Latin text) → filler check (mm-hmm, okay… skipped with no AI call) → fast detection model that joins split questions and fixes technical terms → answer model. Questions already answered are not answered again.
+
 ## Cost
 
 - Model pickers show prices: answer models per 1M tokens, speech-to-text models per audio hour (or per 1M tokens).
@@ -50,6 +58,7 @@ In **Notes & settings → AI models** you can pick any answer model and speech-t
 | `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Try `deepgram/nova-3` or `openai/gpt-4o-mini-transcribe` for accuracy |
 | `ANSWER_MODEL` | no | `anthropic/claude-sonnet-5.5` | Any OpenRouter chat model. `anthropic/claude-haiku-5.5` is faster/cheaper, less accurate |
 | `ANSWER_REASONING` | no | `low` | AI thinking level: `low`, `medium`, `high`. Higher = slower. `none` works only with Haiku |
+| `DETECT_MODEL` | no | `anthropic/claude-haiku-5.5` | Fast model that decides if speech is a question (thinking off) |
 | `STT_LANGUAGE` | no | `en` | `auto` to let the model detect |
 
 ## Run locally

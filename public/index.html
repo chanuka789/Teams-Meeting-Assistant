@@ -71,12 +71,21 @@
         Answer questions automatically
       </label>
       <fieldset class="models">
+        <legend>Your documents <span class="muted">(used to answer questions)</span></legend>
+        <p class="small muted">Upload PDF, Word (.docx), TXT or Markdown files: your summary of experience, case study, RICS guidance, project reports. For each question the app finds the most relevant parts and gives them to the AI. Files stay in this browser.</p>
+        <input id="docInput" type="file" multiple accept=".pdf,.docx,.txt,.md,.csv" />
+        <ul id="docList" class="doc-list"></ul>
+        <p class="small muted" id="docInfo"></p>
+      </fieldset>
+      <fieldset class="models">
         <legend>AI models <span class="muted">(live list from OpenRouter)</span></legend>
         <label for="answerModelSearch">Answer model</label>
         <input id="answerModelSearch" type="search" placeholder="Search models, e.g. claude, gpt, gemini…" autocomplete="off" />
         <select id="answerModelSelect" aria-label="Answer model"><option>Loading models…</option></select>
         <label for="reasoningSelect">Thinking level <span class="muted">(higher = more careful, but slower)</span></label>
         <select id="reasoningSelect"></select>
+        <label for="detectModelSelect">Question detection model <span class="muted">(fast and cheap is best)</span></label>
+        <select id="detectModelSelect"><option>Loading models…</option></select>
         <label for="sttModelSelect">Speech-to-text model</label>
         <select id="sttModelSelect"><option>Loading models…</option></select>
         <div class="models-foot">

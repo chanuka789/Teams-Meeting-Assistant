@@ -1,5 +1,6 @@
 import { SpeechSegmenter, resample, encodeWav, bytesToBase64, TARGET_RATE } from './audio.js';
 import { reasoningChoices, splitCost, formatUsd } from './models.js';
+import { buildIndex, search } from './knowledge.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -14,6 +15,7 @@ const els = {
   autoAnswerInput: $('autoAnswerInput'), modelInfo: $('modelInfo'), logoutBtn: $('logoutBtn'),
   answerModelSearch: $('answerModelSearch'), answerModelSelect: $('answerModelSelect'),
   reasoningSelect: $('reasoningSelect'), sttModelSelect: $('sttModelSelect'), resetModelsBtn: $('resetModelsBtn'),
+  detectModelSelect: $('detectModelSelect'), docInput: $('docInput'), docList: $('docList'), docInfo: $('docInfo'),
   costBtn: $('costBtn'), costInfo: $('costInfo'), keyInfo: $('keyInfo'), resetCostBtn: $('resetCostBtn'),
   loginDialog: $('loginDialog'), loginForm: $('loginForm'), passwordInput: $('passwordInput'), loginError: $('loginError'),
   toast: $('toast'),
@@ -117,6 +119,7 @@ const REASONING_LABELS = {
 };
 const chosenAnswerModel = () => store.get('ma_answer_model') || models.defaults?.answerModel || '';
 const chosenSttModel = () => store.get('ma_stt_model') || models.defaults?.sttModel || '';
+const chosenDetectModel = () => store.get('ma_detect_model') || models.defaults?.detectModel || '';
 const findModel = (list, id) => list.find((m) => m.id === id);
 
 function price(m) {
@@ -142,6 +145,9 @@ function loadModels() {
       if (store.get('ma_answer_model') && !findModel(models.answer, store.get('ma_answer_model'))) {
         store.del('ma_answer_model'); toast('Your chosen answer model is no longer available. Using the default.', true);
       }
+      if (store.get('ma_detect_model') && !findModel(models.answer, store.get('ma_detect_model'))) {
+        store.del('ma_detect_model'); toast('Your chosen question detection model is no longer available. Using the default.', true);
+      }
       if (store.get('ma_stt_model') && !findModel(models.stt, store.get('ma_stt_model'))) {
         store.del('ma_stt_model'); toast('Your chosen speech-to-text model is no longer available. Using the default.', true);
       }
@@ -155,9 +161,8 @@ function loadModels() {
   return models.loading;
 }
 
-function renderAnswerOptions() {
-  const q = els.answerModelSearch.value.trim().toLowerCase();
-  const current = chosenAnswerModel();
+// Fill a chat-model <select>, grouped by provider, optionally filtered by a search text
+function fillChatModelSelect(select, current, defaultId, q = '') {
   const list = models.answer.filter((m) => !q || m.id === current
     || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
   const groups = new Map();
@@ -166,16 +171,23 @@ function renderAnswerOptions() {
     if (!groups.has(provider)) groups.set(provider, []);
     groups.get(provider).push(m);
   }
-  els.answerModelSelect.replaceChildren(...[...groups].map(([provider, items]) => {
+  select.replaceChildren(...[...groups].map(([provider, items]) => {
     const g = document.createElement('optgroup');
     g.label = provider;
     for (const m of items) {
       const label = m.name.includes(':') ? m.name.split(':').slice(1).join(':').trim() : m.name;
-      const tags = [price(m), m.id === models.defaults?.answerModel ? 'default' : ''].filter(Boolean).join(' · ');
+      const tags = [price(m), m.id === defaultId ? 'default' : ''].filter(Boolean).join(' · ');
       g.append(new Option(tags ? `${label} — ${tags}` : label, m.id, false, m.id === current));
     }
     return g;
   }));
+}
+function renderAnswerOptions() {
+  fillChatModelSelect(els.answerModelSelect, chosenAnswerModel(), models.defaults?.answerModel,
+    els.answerModelSearch.value.trim().toLowerCase());
+}
+function renderDetectOptions() {
+  fillChatModelSelect(els.detectModelSelect, chosenDetectModel(), models.defaults?.detectModel);
 }
 
 function renderReasoningOptions() {
@@ -201,13 +213,15 @@ function renderSttOptions() {
 function renderModelInfo() {
   const a = findModel(models.answer, chosenAnswerModel());
   const s = findModel(models.stt, chosenSttModel());
-  els.modelInfo.textContent = `${models.answer.length} answer models, ${models.stt.length} speech-to-text models. `
-    + `Using: ${a?.name || chosenAnswerModel()} · ${s?.name || chosenSttModel()}`;
+  const d = findModel(models.answer, chosenDetectModel());
+  els.modelInfo.textContent = `${models.answer.length} chat models, ${models.stt.length} speech-to-text models. `
+    + `Using: ${a?.name || chosenAnswerModel()} · detection ${d?.name || chosenDetectModel()} · ${s?.name || chosenSttModel()}`;
 }
 
 function renderModelPickers() {
   renderAnswerOptions();
   renderReasoningOptions();
+  renderDetectOptions();
   renderSttOptions();
   renderModelInfo();
 }
@@ -219,12 +233,16 @@ els.answerModelSelect.addEventListener('change', () => {
   renderModelInfo();
 });
 els.reasoningSelect.addEventListener('change', () => store.set('ma_reasoning', els.reasoningSelect.value));
+els.detectModelSelect.addEventListener('change', () => {
+  store.set('ma_detect_model', els.detectModelSelect.value);
+  renderModelInfo();
+});
 els.sttModelSelect.addEventListener('change', () => {
   store.set('ma_stt_model', els.sttModelSelect.value);
   renderModelInfo();
 });
 els.resetModelsBtn.onclick = () => {
-  ['ma_answer_model', 'ma_stt_model', 'ma_reasoning'].forEach((k) => store.del(k));
+  ['ma_answer_model', 'ma_stt_model', 'ma_reasoning', 'ma_detect_model'].forEach((k) => store.del(k));
   els.answerModelSearch.value = '';
   renderModelPickers();
   toast('Models reset to defaults');
@@ -233,8 +251,9 @@ els.resetModelsBtn.onclick = () => {
 // ---------- cost ----------
 // Running total of what OpenRouter charged, kept in this browser until reset.
 function readCost() {
-  try { return { stt: 0, answer: 0, answers: 0, since: Date.now(), ...JSON.parse(store.get('ma_cost') || '{}') }; } catch {
-    return { stt: 0, answer: 0, answers: 0, since: Date.now() };
+  const empty = { stt: 0, detect: 0, answer: 0, answers: 0, since: Date.now() };
+  try { return { ...empty, ...JSON.parse(store.get('ma_cost') || '{}') }; } catch {
+    return empty;
   }
 }
 function addCost(kind, amount) {
@@ -247,11 +266,11 @@ function addCost(kind, amount) {
 }
 function renderCost() {
   const c = readCost();
-  const total = c.stt + c.answer;
+  const total = c.stt + c.detect + c.answer;
   els.costBtn.textContent = `Spent: ${formatUsd(total)}`;
   const avg = c.answers ? ` (avg ${formatUsd(c.answer / c.answers)} per AI reply)` : '';
   els.costInfo.textContent = `Since ${new Date(c.since).toLocaleString()}: speech-to-text ${formatUsd(c.stt)} · `
-    + `answers ${formatUsd(c.answer)}${avg} · total ${formatUsd(total)}`;
+    + `question detection ${formatUsd(c.detect)} · answers ${formatUsd(c.answer)}${avg} · total ${formatUsd(total)}`;
 }
 async function loadKeyUsage() {
   els.keyInfo.textContent = '';
@@ -268,6 +287,84 @@ els.resetCostBtn.onclick = () => {
   renderCost();
   toast('Cost counter reset');
 };
+
+// ---------- knowledge documents ----------
+// Extracted text of the user's documents, kept in this browser's IndexedDB (too big for localStorage).
+const docsDb = {
+  open() {
+    return new Promise((resolve, reject) => {
+      const r = indexedDB.open('meeting-assistant', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'name' });
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('docs', mode);
+      const req = fn(tx.objectStore('docs'));
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+  all() { return this.run('readonly', (s) => s.getAll()); },
+  put(doc) { return this.run('readwrite', (s) => s.put(doc)); },
+  del(name) { return this.run('readwrite', (s) => s.delete(name)); },
+};
+const knowledge = { docs: [], index: buildIndex([]) };
+
+async function refreshDocs() {
+  try { knowledge.docs = await docsDb.all(); } catch { knowledge.docs = []; }
+  knowledge.index = buildIndex(knowledge.docs);
+  renderDocs();
+}
+function renderDocs() {
+  els.docList.replaceChildren(...knowledge.docs.map((d) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = `${d.name} — ${d.text.length.toLocaleString()} characters`;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'ghost small';
+    del.textContent = 'Remove';
+    del.onclick = async () => { await docsDb.del(d.name).catch(() => {}); await refreshDocs(); toast(`Removed ${d.name}`); };
+    li.append(name, del);
+    return li;
+  }));
+  const total = knowledge.docs.reduce((n, d) => n + d.text.length, 0);
+  els.docInfo.textContent = knowledge.docs.length
+    ? `${knowledge.docs.length} document(s), ${total.toLocaleString()} characters, ${knowledge.index.chunks.length} searchable passages.`
+    : 'No documents yet.';
+}
+const fileToBase64 = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(',')[1] || '');
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(file);
+});
+els.docInput.addEventListener('change', async () => {
+  const files = [...els.docInput.files];
+  els.docInput.value = '';
+  for (const file of files) {
+    if (file.size > 20 * 1024 * 1024) { toast(`${file.name} is larger than 20 MB.`, true); continue; }
+    els.docInfo.textContent = `Reading ${file.name}…`;
+    try {
+      const res = await api('/api/extract', { name: file.name, data: await fileToBase64(file) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(`${file.name}: ${data.error || 'could not read the file'}`, true); continue; }
+      await docsDb.put({ name: file.name, text: data.text, added: Date.now() });
+      toast(`Added ${file.name} (${data.chars.toLocaleString()} characters)`);
+    } catch (e) {
+      toast(`${file.name}: ${e.message}`, true);
+    }
+  }
+  await refreshDocs();
+});
+// The most relevant passages of the user's documents for a question
+function findKnowledge(question) {
+  return search(knowledge.index, question, { k: 6, maxChars: 6000 }).map(({ doc, text }) => ({ doc, text }));
+}
 
 // ---------- transcript ----------
 function addPendingSegment() {
@@ -298,13 +395,14 @@ els.copyTranscriptBtn.onclick = async () => {
 els.clearTranscriptBtn.onclick = () => { state.segments = []; els.transcript.innerHTML = ''; };
 
 // ---------- answers ----------
-function createCard(manual) {
+function createCard(manual, sources = []) {
   els.answersEmpty?.remove();
   const card = document.createElement('div');
   card.className = 'card new' + (manual ? ' manual' : '');
   card.innerHTML = `<div class="q"></div><div class="a"></div>
-    <div class="meta"><span class="when">${timeStr()}${manual ? ' · typed' : ''}</span>
+    <div class="meta"><span class="when">${timeStr()}${manual ? ' · typed' : ''}<span class="sources"></span></span>
     <button class="ghost small copy">Copy</button></div>`;
+  if (sources.length) card.querySelector('.sources').textContent = ` · from: ${sources.join(', ')}`;
   card.querySelector('.copy').onclick = async () => {
     try { await navigator.clipboard.writeText([...card.querySelectorAll('.a p, .a li')]
       .map((x) => (x.tagName === 'LI' ? '- ' : '') + x.textContent).join('\n')); toast('Answer copied'); } catch { /* ignore */ }
@@ -339,10 +437,15 @@ function renderCard(card, text) {
 }
 els.clearAnswersBtn.onclick = () => { els.answers.innerHTML = ''; };
 
-async function getAnswer(latest, manual = false) {
+// source: 'typed' (Ask box), 'detected' (question found in speech) or 'speech'
+async function getAnswer(latest, source = 'speech') {
+  const manual = source === 'typed';
+  const docs = findKnowledge(latest);
+  const sources = [...new Set(docs.map((d) => d.doc))];
   const body = {
     latest,
-    manual,
+    source,
+    knowledge: docs,
     transcript: recentTranscript(),
     notes: els.notesInput.value,
     role: els.roleInput.value,
@@ -375,12 +478,12 @@ async function getAnswer(latest, manual = false) {
         if (state.running) setStatus('Listening · no question detected', 'live');
         continue;
       }
-      card = createCard(manual);
+      card = createCard(manual, sources);
     }
     renderCard(card, text);
   }
   const { text, cost } = splitCost(raw);
-  if (!card && !none && text.trim() && !/^\s*NONE/i.test(text)) { card = createCard(manual); renderCard(card, text); }
+  if (!card && !none && text.trim() && !/^\s*NONE/i.test(text)) { card = createCard(manual, sources); renderCard(card, text); }
   addCost('answer', cost);
   if (!text.trim()) toast('The AI returned an empty answer. Please try again.', true);
 }
@@ -390,19 +493,47 @@ els.askForm.addEventListener('submit', (e) => {
   const q = els.askInput.value.trim();
   if (!q) return;
   els.askInput.value = '';
-  getAnswer(q, true);
+  getAnswer(q, 'typed');
 });
 
-// A question is often cut into several speech segments: wait for a short gap, then answer them together.
+// Questions already answered, so the detector does not answer the same question twice
+const answeredQuestions = [];
+
+// A fast model checks whether the speech is a question and rebuilds the full question;
+// only then is the (slower) answer model called.
+async function detectAndAnswer(latest) {
+  let res;
+  try {
+    res = await api('/api/detect', {
+      latest,
+      transcript: recentTranscript(2500),
+      answered: answeredQuestions,
+      model: store.get('ma_detect_model') || undefined,
+    });
+  } catch { return; }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(data.error || 'Question detection failed', true); return; }
+  if (data.cost) addCost('detect', data.cost);
+  if (!data.question) {
+    if (!data.skipped && state.running) setStatus('Listening · no question detected', 'live');
+    return;
+  }
+  answeredQuestions.push(data.question);
+  if (answeredQuestions.length > 5) answeredQuestions.shift();
+  if (state.running) setStatus('Listening · answering…', 'busy');
+  getAnswer(data.question, 'detected');
+}
+
+// A question is often cut into several speech segments: wait for a short gap, then check them together.
 const ANSWER_DELAY_MS = 1200;
 const pendingAnswer = { parts: [], timer: null };
 function queueAutoAnswer(text) {
   pendingAnswer.parts.push(text);
   clearTimeout(pendingAnswer.timer);
   pendingAnswer.timer = setTimeout(() => {
-    const latest = pendingAnswer.parts.join(' ');
+    const latest = pendingAnswer.parts.join(' ').trim();
     pendingAnswer.parts = [];
-    if (latest.split(/\s+/).length >= 3) getAnswer(latest);
+    if (latest) detectAndAnswer(latest);
   }, ANSWER_DELAY_MS);
 }
 
@@ -513,6 +644,7 @@ els.stopBtn.onclick = stop;
 (async function boot() {
   loadSettings();
   renderCost();
+  refreshDocs();
   if (!navigator.mediaDevices?.getDisplayMedia) {
     toast('This browser cannot capture screen audio. Use Chrome or Edge on a computer.', true);
   }
