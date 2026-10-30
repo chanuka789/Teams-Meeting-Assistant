@@ -303,23 +303,24 @@ function createCard(manual) {
   const card = document.createElement('div');
   card.className = 'card new' + (manual ? ' manual' : '');
   card.innerHTML = `<div class="q"></div><div class="a"></div>
-    <div class="meta"><span class="when">${timeStr()}${manual ? ' · typed' : ''}<span class="cost"></span></span>
+    <div class="meta"><span class="when">${timeStr()}${manual ? ' · typed' : ''}</span>
     <button class="ghost small copy">Copy</button></div>`;
   card.querySelector('.copy').onclick = async () => {
-    try { await navigator.clipboard.writeText(card.querySelector('.a').textContent); toast('Answer copied'); } catch { /* ignore */ }
+    try { await navigator.clipboard.writeText([...card.querySelectorAll('.a p')].map((x) => x.textContent).join('\n')); toast('Answer copied'); } catch { /* ignore */ }
   };
   els.answers.prepend(card);
   return card;
 }
 function renderCard(card, text) {
   const m = text.match(/^\s*Q:\s*(.*?)\s*(?:\n+\s*A:\s*([\s\S]*))?$/i);
-  if (m) {
-    card.querySelector('.q').textContent = m[1] || '';
-    card.querySelector('.a').textContent = (m[2] || '').trim();
-  } else {
-    card.querySelector('.q').textContent = '';
-    card.querySelector('.a').textContent = text.trim();
-  }
+  card.querySelector('.q').textContent = m ? m[1] || '' : '';
+  const answer = (m ? m[2] || '' : text).trim();
+  // One sentence per line: show each as its own paragraph so it is easy to scan while speaking
+  card.querySelector('.a').replaceChildren(...answer.split('\n').filter((l) => l.trim()).map((line) => {
+    const p = document.createElement('p');
+    p.textContent = line.trim();
+    return p;
+  }));
 }
 els.clearAnswersBtn.onclick = () => { els.answers.innerHTML = ''; };
 
@@ -366,7 +367,6 @@ async function getAnswer(latest, manual = false) {
   const { text, cost } = splitCost(raw);
   if (!card && !none && text.trim() && !/^\s*NONE/i.test(text)) { card = createCard(manual); renderCard(card, text); }
   addCost('answer', cost);
-  if (card && cost !== null) card.querySelector('.cost').textContent = ` · ${formatUsd(cost)}`;
   if (!text.trim()) toast('The AI returned an empty answer. Please try again.', true);
 }
 

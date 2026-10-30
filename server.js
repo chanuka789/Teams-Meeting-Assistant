@@ -219,8 +219,8 @@ app.post('/api/answer', async (req, res) => {
         model: model.id,
         messages,
         stream: true,
-        // Room for reasoning plus the short answer; the prompt keeps the visible answer to 2-4 points.
-        max_tokens: 2000,
+        // Room for reasoning plus the answer; the prompt keeps the visible answer to about 7-10 sentences.
+        max_tokens: 3000,
         ...(reasoning && { reasoning }),
       }),
       signal: controller.signal,

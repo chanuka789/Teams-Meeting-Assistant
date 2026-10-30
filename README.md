@@ -2,7 +2,7 @@
 
 A web app that listens to the **other people** in your Microsoft Teams meeting and shows short suggested answers on screen when someone asks you a question.
 
-Tuned for **RICS APC final interviews** (Quantity Surveying and Construction pathway): answers are 2-4 short points, experience questions use only your notes, technical and ethics answers follow current RICS standards, and the AI leaves out anything it is not sure of.
+Tuned for **RICS APC final interviews** (Quantity Surveying and Construction pathway): answers follow a set structure (definition, key facts, main points, how I use it as a QS, closing) in 7-10 spoken sentences, experience questions use only your notes, technical and ethics answers follow current RICS standards, and the AI leaves out anything it is not sure of.
 
 - Hears only the other side: it captures the meeting's audio output, not your microphone. With headphones on, your own voice is never in that audio.
 - Speech-to-text and answers both go through **OpenRouter** (one API key).
