@@ -41,3 +41,20 @@ export function sttItems(models, defaultId) {
     sub: `${providerOf(m)} · ${price(m.price)}`, tags: m.id === defaultId ? [{ text: 'Default', kind: 'accent' }] : [],
   }));
 }
+
+// Fill a compact "Thinking: …" select for a model; returns false when the model has no thinking levels
+export function fillThinkingSelect(select, model, wanted, reasoningChoices) {
+  const choices = reasoningChoices(model);
+  select.disabled = !choices.length;
+  if (!choices.length) {
+    select.replaceChildren(new Option('Thinking: n/a', ''));
+    return false;
+  }
+  const sel = reasoningSelection(choices, wanted);
+  select.replaceChildren(...choices.map((c) => {
+    const o = new Option(`Thinking: ${REASONING_SHORT[c] || c}`, c, false, c === sel);
+    o.title = REASONING_LABELS[c] || c;
+    return o;
+  }));
+  return true;
+}

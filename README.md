@@ -12,6 +12,7 @@ A web app for RICS APC final interviews (Quantity surveying and construction pat
 | Page | Who | What |
 |---|---|---|
 | Live interview | everyone | Start/stop listening, live transcript, answer cards with sources, type a question, text size controls, compact **model / thinking / answer style** dropdowns above the answers, **Float answers**: an always-on-top window (Chrome/Edge) that shows the latest answer like a subtitle and can be dragged over the Teams window |
+| Chat | everyone | Study chat with saved, searchable conversations. Answers use the library and your case study and cite them ([1], [2]); click a citation or source to open the document beside the chat, scrolled to the passage and briefly highlighted (a list when several places were used). Choose model, thinking, which documents to search and answer length; stop, regenerate, copy, export |
 | Competency library | everyone reads, admins upload | Documents organised by the 19 QS&C competencies (11 mandatory, 6 core, optional list) plus General RICS guidance; admins can edit the list |
 | My case study | each user | Private case study documents (report, slides with speaker notes, figures); nobody else can open them |
 | Settings | each user | Profile and notes, theme, text sizes, AI models with prices, usage and cost, password |

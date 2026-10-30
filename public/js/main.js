@@ -9,6 +9,7 @@ import { renderLibrary } from './pages/library.js';
 import { renderCaseStudy } from './pages/casestudy.js';
 import { renderSettings } from './pages/settings.js';
 import { renderUsers } from './pages/users.js';
+import { renderChat } from './pages/chat.js';
 
 const root = document.getElementById('root');
 let live = null;          // the live page stays mounted in memory so listening continues across pages
@@ -16,6 +17,7 @@ let shell = null;
 
 const ROUTES = [
   { path: 'live', label: 'Live interview', icon: 'radio-tower', group: 'Interview' },
+  { path: 'chat', label: 'Chat', icon: 'messages-square', group: 'Interview' },
   { path: 'library', label: 'Competency library', icon: 'library', group: 'Knowledge' },
   { path: 'case-study', label: 'My case study', icon: 'folder-lock', group: 'Knowledge' },
   { path: 'settings', label: 'Settings', icon: 'settings', group: 'Account' },
@@ -95,6 +97,12 @@ async function route() {
   if (r.path === 'live') {
     main.replaceChildren(live.el);
     live.onShow();
+    return;
+  }
+  if (r.path === 'chat') {
+    const chat = h('div', { class: 'chat-page' });
+    main.replaceChildren(chat);
+    await renderChat(chat, params);
     return;
   }
   const page = h('div', { class: 'page' });

@@ -61,6 +61,7 @@ export function splitCost(raw) {
     text: raw.slice(0, i),
     cost: typeof meta.cost === 'number' ? meta.cost : null,
     sources: Array.isArray(meta.sources) ? meta.sources : [],
+    meta,
   };
 }
 

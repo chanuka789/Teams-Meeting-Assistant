@@ -19,3 +19,19 @@ test('full-text OR query uses only safe keywords', () => {
   assert.equal(orQuery("Talk me through the client's cost & risk!"), 'client | cost | risk');
   assert.equal(orQuery('the and of'), '');
 });
+
+test('cited chunks are located in the original text, whitespace and overlaps included', async () => {
+  const { locateChunks, mergeChunks } = await import('../lib/knowledge.js');
+  const text = 'Project Falcon cost plan\n\nThe approved cost limit is AED 48.5 million.   Retention is 5%.\nVariations were valued at AED 1.2m.';
+  const chunks = chunkText(text, 60, 20).map((t, i) => ({ id: i + 1, text: t }));
+  const ranges = locateChunks(text, chunks);
+  assert.equal(ranges.length, chunks.length);
+  for (const r of ranges) {
+    const original = text.slice(r.start, r.end).replace(/\s+/g, ' ');
+    assert.equal(original, chunks[r.id - 1].text);
+  }
+  assert.deepEqual(locateChunks(text, [{ id: 9, text: 'not in the document' }]), []);
+  const rebuilt = mergeChunks(chunks.map((c) => c.text));
+  assert.ok(rebuilt.includes('AED 48.5 million'));
+  assert.equal(locateChunks(rebuilt, chunks).length, chunks.length);
+});

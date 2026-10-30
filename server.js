@@ -12,6 +12,8 @@ import { config } from './lib/openrouter.js';
 import { router as accountRouter } from './lib/routes/account.js';
 import { router as libraryRouter } from './lib/routes/library.js';
 import { router as aiRouter } from './lib/routes/ai.js';
+import { router as chatRouter } from './lib/routes/chat.js';
+import { backfillDocumentText } from './lib/documents.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT) || 3000;
@@ -37,6 +39,7 @@ app.use('/api', express.json({ limit: '10mb' }), loadUser);
 app.use('/api', accountRouter);
 app.use('/api', libraryRouter);
 app.use('/api', aiRouter);
+app.use('/api', chatRouter);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Readable JSON errors instead of HTML stack traces
@@ -58,6 +61,7 @@ async function start() {
     try {
       await migrate();
       status.db = 'ok';
+      backfillDocumentText().catch((err) => console.error('[backfill]', err.message)); // in the background
     } catch (err) {
       status.db = 'error: ' + err.message;
       console.error('[db] migration failed', err.message);

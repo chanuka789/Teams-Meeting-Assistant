@@ -52,3 +52,16 @@ test('each answer style has its own format rules', async () => {
   assert.equal(buildSystemPrompt('unknown'), buildSystemPrompt('balanced'));
   assert.match(buildAnswerMessages({ latest: 'x', style: 'brief' })[0].content, /2-3 sentences/);
 });
+
+test('chat prompt carries numbered excerpts, history and length', async () => {
+  const { buildChatMessages } = await import('../lib/prompt.js');
+  const m = buildChatMessages({
+    profile: 'QS in the GCC', excerpts: [{ n: 1, label: 'My case study · case.pdf', text: 'Cost limit AED 48.5m' }],
+    history: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello' }], question: 'What was the cost limit?', length: 'concise',
+  });
+  assert.equal(m[0].role, 'system');
+  assert.match(m[0].content, /\[1\] My case study · case\.pdf\nCost limit AED 48\.5m/);
+  assert.match(m[0].content, /at most about 120 words/);
+  assert.deepEqual(m.slice(1).map((x) => x.role), ['user', 'assistant', 'user']);
+  assert.equal(m.at(-1).content, 'What was the cost limit?');
+});
