@@ -7,6 +7,7 @@ import { h, icon, button, toast, announce, switchEl, sizeStepper, emptyState, op
 import { api, apiStream } from '../api.js';
 import { pref, setPrefs, onPrefsChange } from '../state.js';
 import { createOverlay, parseAnswer, answerNodes } from './overlay.js';
+import { ANSWER_STYLES } from '../format.js';
 
 const ANSWER_DELAY_MS = 1200; // a question is often cut into several segments: wait for a short gap
 const METER_BARS = 14;
@@ -37,7 +38,7 @@ export function createLivePage({ onListeningChange }) {
   // Floating answers window (always on top, drag anywhere over the meeting)
   const overlay = createOverlay({
     getAnswers: () => st.answers,
-    getStatus: () => (!st.running ? { text: 'Ready', kind: '' } : st.busy > 0 ? { text: 'Answering…', kind: 'busy' } : { text: 'Listening', kind: 'live' }),
+    getStatus: () => (st.busy > 0 ? { text: 'Answering…', kind: 'busy' } : st.running ? { text: 'Listening', kind: 'live' } : { text: 'Ready', kind: '' }),
   });
   const floatBtn = button('Float answers', { icon: 'picture-in-picture-2', onClick: () => (overlay.isOpen() ? overlay.close() : overlay.open().catch((e) => toast(e.message, 'error'))) });
   floatBtn.title = 'Open the answers in a small window that stays on top of Teams. Drag it anywhere.';
@@ -71,11 +72,14 @@ export function createLivePage({ onListeningChange }) {
     h('div', { class: 'input-icon' }, icon('message-square-text'), askInput),
     h('span', { class: 'kbd', title: 'Press / to focus', 'aria-hidden': 'true', style: { alignSelf: 'center' } }, '/'),
     button('Ask', { icon: 'send', variant: 'primary', type: 'submit' }));
+  const styleSel = h('select', { class: 'select select-sm', 'aria-label': 'Answer style', title: 'Answer style (applies to the next answer)',
+    onchange: () => setPrefs({ answerStyle: styleSel.value }) },
+  ANSWER_STYLES.map((x) => h('option', { value: x.id, selected: x.id === pref('answerStyle'), title: x.hint }, x.label)));
   const answerSize = sizeStepper(pref('answerSize'), { min: 12, max: 36, label: 'answer', onChange: (v) => setPrefs({ answerSize: v }) });
   const answersPanel = h('section', { class: 'panel', 'aria-labelledby': 'answers-h' },
     h('div', { class: 'panel-head' },
       h('h2', { id: 'answers-h' }, icon('sparkles'), 'Answers'), answerCount,
-      h('span', { class: 'spacer' }), answerSize,
+      h('span', { class: 'spacer' }), styleSel, answerSize,
       button('', { icon: 'eraser', variant: 'ghost', size: 'sm', ariaLabel: 'Clear answers', onClick: clearAnswers })),
     askForm, answersBody);
 
@@ -116,6 +120,7 @@ export function createLivePage({ onListeningChange }) {
     if ('answerSize' in c) answerSize.setValue(c.answerSize);
     if ('transcriptSize' in c) transcriptSize.setValue(c.transcriptSize);
     if ('autoAnswer' in c) autoSwitch.querySelector('input').checked = c.autoAnswer;
+    if ('answerStyle' in c) styleSel.value = pref('answerStyle');
     applySizes();
   });
 
@@ -132,9 +137,9 @@ export function createLivePage({ onListeningChange }) {
     pill.lastChild.textContent = text;
   }
   function refreshStatus() {
-    if (!st.running) setStatus('Ready');
-    else if (st.busy > 0) setStatus('Answering…', 'busy');
-    else setStatus('Listening', 'live');
+    if (st.busy > 0) setStatus('Answering…', 'busy');
+    else if (st.running) setStatus('Listening', 'live');
+    else setStatus('Ready');
     overlay.updateStatus();
   }
   function addSpend(cost) {
@@ -249,7 +254,8 @@ export function createLivePage({ onListeningChange }) {
     st.busy++;
     refreshStatus();
     try {
-      const res = await apiStream('/api/answer', { latest: question, source, transcript: recentTranscript() });
+      // Style is sent with the question, so a change just before asking is used straight away
+      const res = await apiStream('/api/answer', { latest: question, source, transcript: recentTranscript(), style: pref('answerStyle') });
       if (!res.ok || !res.body) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Answer failed');

@@ -390,7 +390,7 @@ dialog.modal[open] { animation: pop .18s var(--ease); }
 
 /* ---------- library & documents ---------- */
 .lib { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: var(--s-5); align-items: start; }
-@media (max-width: 1000px) { .lib { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .lib { grid-template-columns: 1fr; } .lib .comp-list { position: static; max-height: 340px; } }
 .comp-list { position: sticky; top: var(--s-4); max-height: calc(100dvh - 140px); overflow: auto; padding: var(--s-2); }
 .comp-group { padding: var(--s-2) 0; }
 .comp-group + .comp-group { border-top: 1px solid var(--border); }
@@ -520,3 +520,35 @@ body.ov-page { margin: 0; height: 100vh; overflow: hidden; background: var(--sur
 .ov-empty { height: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-3); font-size: var(--t-md); }
 .ov-empty .icon { width: 20px; height: 20px; }
 @media (max-width: 380px) { .ov-bar .stepper output { display: none; } }
+
+/* ---------- searchable select (combobox) ---------- */
+.combo { position: relative; }
+.combo-trigger {
+  width: 100%; min-height: 40px; display: flex; align-items: center; gap: var(--s-2); padding: 6px 10px 6px 12px; text-align: left; cursor: pointer;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+}
+.combo-trigger:hover { border-color: var(--text-3); }
+.combo-trigger[aria-expanded="true"] { border-color: var(--primary); box-shadow: 0 0 0 3px var(--accent-ring); }
+.combo-trigger > .icon { width: 16px; height: 16px; color: var(--text-3); margin-left: auto; flex: none; }
+.combo-value { flex: 1; min-width: 0; }
+.combo-main { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.combo-main b { font-weight: 500; }
+.combo-main .subtle { font-size: var(--t-sm); }
+.combo-pop {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; right: 0; padding: var(--s-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column; gap: var(--s-2);
+}
+.combo-pop.up { top: auto; bottom: calc(100% + 6px); }
+.combo-list { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; }
+.combo-group { position: sticky; top: 0; z-index: 1; padding: 8px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); background: var(--surface); }
+.combo-opt { display: flex; align-items: center; gap: var(--s-2); padding: 7px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.combo-opt.active { background: var(--surface-2); }
+.combo-opt[aria-selected="true"] { color: var(--accent); }
+.combo-check { width: 16px; flex: none; display: grid; place-items: center; }
+.combo-check .icon { width: 15px; height: 15px; }
+.combo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.combo-tags { display: flex; gap: 4px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.combo-empty { padding: 16px; text-align: center; color: var(--text-3); }
+.combo-count { font-size: var(--t-xs); color: var(--text-3); padding: 0 4px; }
+.select-sm { min-height: 30px; height: 30px; padding: 0 30px 0 10px; font-size: var(--t-sm); border-radius: var(--r-sm); width: auto; background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%; }

@@ -2,7 +2,7 @@
 
 import { h, icon, button, segmented, initials, toast } from './ui.js';
 import { api, setUnauthorizedHandler } from './api.js';
-import { session, pref, setPrefs, applyTheme, flushPrefs } from './state.js';
+import { session, pref, setPrefs, applyTheme, flushPrefs, onPrefsChange } from './state.js';
 import { renderAuth } from './pages/auth.js';
 import { createLivePage } from './pages/live.js';
 import { renderLibrary } from './pages/library.js';
@@ -53,6 +53,8 @@ function buildShell() {
   ]));
   const theme = themeSwitch();
   theme.classList.add('theme-switch');
+  // Keep the sidebar switch in step when the theme is changed in Settings
+  onPrefsChange((c) => { if ('theme' in c && theme.isConnected) theme.setValue(c.theme); });
   const brand = () => h('div', { class: 'brand' },
     h('div', { class: 'logo' }, icon('audio-lines')),
     h('div', {}, h('div', { class: 'brand-name' }, 'APC Assistant'), h('div', { class: 'brand-sub' }, 'RICS interview companion')));
@@ -84,6 +86,7 @@ async function route() {
     if (path === r.path) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
   document.title = `${r.label} · APC Assistant`;
+  flushPrefs();
   const { main } = shell;
   main.scrollTop = 0;
   if (r.path === 'live') {

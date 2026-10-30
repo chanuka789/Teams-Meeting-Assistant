@@ -1,7 +1,8 @@
 // Settings: profile and notes, appearance (theme + text sizes), AI models, usage and password
 
 import { reasoningChoices, formatUsd } from '../../models.js';
-import { h, icon, button, toast, field, segmented, switchEl } from '../ui.js';
+import { h, icon, button, toast, field, segmented, switchEl, combobox } from '../ui.js';
+import { ANSWER_STYLES } from '../format.js';
 import { api } from '../api.js';
 import { session, pref, setPrefs, applyTheme, loadModels } from '../state.js';
 
@@ -38,6 +39,16 @@ export async function renderSettings(page, { rebuildShell }) {
       h('nav', { class: 'settings-nav', 'aria-label': 'Settings sections' }, navLinks),
       h('div', { class: 'stack', style: { gap: '24px' } },
         profileSection(me, rebuildShell), appearanceSection(), modelsSection(), usageSection(me), passwordSection())));
+
+  // Highlight the section in view while scrolling
+  const scroller = page.closest('.main');
+  const spy = new IntersectionObserver((entries) => {
+    const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+    if (!visible) return;
+    const id = visible.target.id.replace('s-', '');
+    navLinks.forEach((a) => a.setAttribute('aria-current', String(a.dataset.target === id)));
+  }, { root: scroller, rootMargin: '0px 0px -65% 0px' });
+  page.querySelectorAll('.section').forEach((sec) => spy.observe(sec));
 }
 
 // ---------- profile ----------
@@ -93,38 +104,51 @@ function appearanceSection() {
 }
 
 // ---------- AI models ----------
+const RECOMMENDED = ['anthropic/claude-sonnet-5.5', 'anthropic/claude-opus-5.5', 'anthropic/claude-haiku-5.5'];
+const providerOf = (m) => (m.name.includes(':') ? m.name.split(':')[0] : m.id.split('/')[0]);
+const shortName = (m) => (m.name.includes(':') ? m.name.split(':').slice(1).join(':').trim() : m.name);
+
+// Chat models as combobox items: the default and recommended ones first, then by provider
+function chatItems(models, defaultId) {
+  const tags = (m) => [
+    m.id === defaultId && { text: 'Default', kind: 'accent' },
+    m.input === 0 && m.output === 0 && { text: 'Free', kind: 'success' },
+  ].filter(Boolean);
+  const item = (m, group) => ({
+    value: m.id, label: shortName(m), group,
+    sub: m.input == null ? providerOf(m) : `${providerOf(m)} · $${m.input} in / $${m.output} out per 1M tokens`,
+    tags: tags(m),
+  });
+  const top = [defaultId, ...RECOMMENDED].filter((id, i, a) => a.indexOf(id) === i)
+    .map((id) => models.find((m) => m.id === id)).filter(Boolean);
+  const rest = models.filter((m) => !top.includes(m))
+    .sort((a, b) => providerOf(a).localeCompare(providerOf(b)) || a.name.localeCompare(b.name));
+  return [...top.map((m) => item(m, 'Recommended')), ...rest.map((m) => item(m, providerOf(m)))];
+}
+
+function sttItems(models, defaultId) {
+  const price = (p) => (!p ? 'price: see OpenRouter' : p.perHour != null ? `$${p.perHour} per audio hour` : `$${p.input} in / $${p.output} out per 1M tokens`);
+  const def = models.filter((m) => m.id === defaultId);
+  return [...def, ...models.filter((m) => m.id !== defaultId)].map((m) => ({
+    value: m.id, label: shortName(m), group: m.id === defaultId ? 'Default' : providerOf(m),
+    sub: `${providerOf(m)} · ${price(m.price)}`, tags: m.id === defaultId ? [{ text: 'Default', kind: 'accent' }] : [],
+  }));
+}
+
 function modelsSection() {
-  const body = h('div', { class: 'stack', style: { gap: '20px' } }, h('div', { class: 'skeleton', style: { height: '38px' } }), h('div', { class: 'skeleton', style: { height: '38px' } }));
+  const body = h('div', { class: 'stack', style: { gap: '20px' } }, h('div', { class: 'skeleton', style: { height: '40px' } }), h('div', { class: 'skeleton', style: { height: '40px' } }));
   const auto = switchEl('Answer detected questions automatically', pref('autoAnswer'), (v) => setPrefs({ autoAnswer: v }));
+  const style = h('select', { class: 'select', onchange: () => { setPrefs({ answerStyle: style.value }); toast('Answer style saved'); } },
+    ANSWER_STYLES.map((s) => h('option', { value: s.id, selected: s.id === pref('answerStyle') }, `${s.label} — ${s.hint}`)));
   const reset = button('Reset to defaults', { variant: 'ghost', icon: 'eraser' });
-  const el = section('models', 'AI models', 'Live list from OpenRouter with prices. Changes apply to your next question.', [auto, h('hr', { class: 'divider' }), body], reset);
+  const el = section('models', 'AI models', 'Live list from OpenRouter with prices. Changes apply to your next question.', [
+    h('div', { class: 'grid-2' }, field('Answer style', style, 'Also on the Live interview screen.'), h('div', { class: 'field', style: { justifyContent: 'flex-end' } }, auto)),
+    h('hr', { class: 'divider' }), body], reset);
 
   loadModels().then((data) => {
     const d = data.defaults;
     const chosen = (k, def) => pref(k) || def;
-    const price = (m) => (m.input == null ? '' : m.input === 0 && m.output === 0 ? 'free' : `$${m.input} in / $${m.output} out per 1M tokens`);
-    const sttPrice = (p) => (!p ? 'price: see OpenRouter' : p.perHour != null ? `$${p.perHour} per audio hour` : price(p));
-
-    const fillChat = (select, current, defaultId, q = '') => {
-      const groups = new Map();
-      for (const m of data.answer.filter((x) => !q || x.id === current || x.name.toLowerCase().includes(q) || x.id.includes(q))) {
-        const provider = m.name.includes(':') ? m.name.split(':')[0] : m.id.split('/')[0];
-        if (!groups.has(provider)) groups.set(provider, []);
-        groups.get(provider).push(m);
-      }
-      select.replaceChildren(...[...groups].map(([provider, items]) => h('optgroup', { label: provider }, items.map((m) => {
-        const label = m.name.includes(':') ? m.name.split(':').slice(1).join(':').trim() : m.name;
-        const tags = [price(m), m.id === defaultId ? 'default' : ''].filter(Boolean).join(' · ');
-        return h('option', { value: m.id, selected: m.id === current }, tags ? `${label} — ${tags}` : label);
-      }))));
-    };
-
-    const answerSearch = h('input', { class: 'input', type: 'search', placeholder: 'Search models, e.g. claude, gpt, gemini…', 'aria-label': 'Search answer models' });
-    const answerSel = h('select', { class: 'select', 'aria-label': 'Answer model' });
-    const reasoningSel = h('select', { class: 'select' });
-    const detectSel = h('select', { class: 'select' });
-    const sttSel = h('select', { class: 'select' });
-
+    const reasoningSel = h('select', { class: 'select', onchange: () => setPrefs({ reasoning: reasoningSel.value }) });
     const drawReasoning = () => {
       const model = data.answer.find((m) => m.id === chosen('answerModel', d.answerModel));
       const choices = reasoningChoices(model);
@@ -134,29 +158,34 @@ function modelsSection() {
       const sel = choices.includes(wanted) ? wanted : choices.includes('low') ? 'low' : choices[choices.length - 1];
       reasoningSel.replaceChildren(...choices.map((c) => h('option', { value: c, selected: c === sel }, REASONING_LABELS[c] || c)));
     };
-    const draw = () => {
-      fillChat(answerSel, chosen('answerModel', d.answerModel), d.answerModel, answerSearch.value.trim().toLowerCase());
-      fillChat(detectSel, chosen('detectModel', d.detectModel), d.detectModel);
-      sttSel.replaceChildren(...data.stt.map((m) => h('option', { value: m.id, selected: m.id === chosen('sttModel', d.sttModel) },
-        `${m.name} — ${sttPrice(m.price)}${m.id === d.sttModel ? ' · default' : ''}`)));
+    const answer = combobox({
+      items: chatItems(data.answer, d.answerModel), value: chosen('answerModel', d.answerModel), ariaLabel: 'Answer model',
+      placeholder: 'Search 380+ models, e.g. claude, gpt, gemini…',
+      onChange: (v) => { setPrefs({ answerModel: v, reasoning: '' }); drawReasoning(); toast('Answer model saved'); },
+    });
+    const detect = combobox({
+      items: chatItems(data.answer, d.detectModel), value: chosen('detectModel', d.detectModel), ariaLabel: 'Question detection model',
+      placeholder: 'Search models…', onChange: (v) => { setPrefs({ detectModel: v }); toast('Detection model saved'); },
+    });
+    const stt = combobox({
+      items: sttItems(data.stt, d.sttModel), value: chosen('sttModel', d.sttModel), ariaLabel: 'Speech-to-text model',
+      placeholder: 'Search speech-to-text models…', onChange: (v) => { setPrefs({ sttModel: v }); toast('Speech-to-text model saved'); },
+    });
+    reset.onclick = () => {
+      setPrefs({ answerModel: '', reasoning: '', detectModel: '', sttModel: '', answerStyle: '' });
+      answer.setValue(d.answerModel); detect.setValue(d.detectModel); stt.setValue(d.sttModel);
+      style.value = pref('answerStyle');
       drawReasoning();
+      toast('Models reset to defaults');
     };
-    answerSearch.oninput = () => fillChat(answerSel, chosen('answerModel', d.answerModel), d.answerModel, answerSearch.value.trim().toLowerCase());
-    answerSel.onchange = () => { setPrefs({ answerModel: answerSel.value }); drawReasoning(); toast('Answer model saved'); };
-    reasoningSel.onchange = () => setPrefs({ reasoning: reasoningSel.value });
-    detectSel.onchange = () => { setPrefs({ detectModel: detectSel.value }); toast('Detection model saved'); };
-    sttSel.onchange = () => { setPrefs({ sttModel: sttSel.value }); toast('Speech-to-text model saved'); };
-    reset.onclick = () => { setPrefs({ answerModel: '', reasoning: '', detectModel: '', sttModel: '' }); answerSearch.value = ''; draw(); toast('Models reset to defaults'); };
-    draw();
-
+    drawReasoning();
+    const labelled = (text, control, hint) => h('div', { class: 'field' }, h('span', { class: 'label' }, text), control, hint && h('div', { class: 'hint' }, hint));
     body.replaceChildren(
-      h('div', { class: 'field' }, h('label', { class: 'label', for: answerSel.id = 'answer-model' }, 'Answer model'),
-        h('div', { class: 'input-icon' }, icon('search'), answerSearch), answerSel,
-        h('div', { class: 'hint' }, `${data.answer.length} chat models. Writes the answers: stronger models are more accurate but slower.`)),
+      labelled('Answer model', answer, `${data.answer.length} chat models. Writes the answers: stronger models are more accurate but slower.`),
       h('div', { class: 'grid-2' },
         field('Thinking level', reasoningSel, 'Higher is more careful but slower.'),
-        field('Question detection model', detectSel, 'Decides if speech is a question. Fast and cheap is best.')),
-      field('Speech-to-text model', sttSel, `${data.stt.length} models. English only.`));
+        labelled('Question detection model', detect, 'Decides if speech is a question. Fast and cheap is best.')),
+      labelled('Speech-to-text model', stt, `${data.stt.length} models. English only.`));
   }).catch((e) => body.replaceChildren(h('div', { class: 'callout warn' }, icon('triangle-alert'), h('div', {}, e.message))));
   return el;
 }
@@ -168,8 +197,8 @@ function usageSection(me) {
     const stat = (label, v) => h('div', { class: 'stat' }, h('span', {}, label), h('b', {}, v));
     const block = (title, x) => h('div', { class: 'stack', style: { gap: '8px' } }, h('span', { class: 'label' }, title),
       h('div', { class: 'stats' },
-        stat('Total', formatUsd(x.total)), stat('Answers', `${formatUsd(x.answer)}`),
-        stat('Speech-to-text', formatUsd(x.stt)), stat('Detection', formatUsd(x.detect))),
+        stat('Total', formatUsd(x.total)), stat('Answer AI', formatUsd(x.answer)),
+        stat('Speech-to-text', formatUsd(x.stt)), stat('Question detection', formatUsd(x.detect))),
       h('span', { class: 'hint' }, `${x.answers} answers · average ${x.answers ? formatUsd(x.answer / x.answers) : '–'} per answer`));
     body.replaceChildren(block('This month', u.month), block('All time', u.all));
     if (me.role === 'admin') {

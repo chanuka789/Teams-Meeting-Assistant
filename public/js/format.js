@@ -18,3 +18,12 @@ export function parseAnswer(text) {
   }
   return { question: m?.[1] || '', blocks };
 }
+
+// Answer styles the user can choose (prompt rules per style live in lib/prompt.js)
+export const ANSWER_STYLES = [
+  { id: 'points', label: 'Points only', hint: '4–6 short bullet points' },
+  { id: 'brief', label: 'Short description only', hint: '2–3 sentences, no bullets' },
+  { id: 'balanced', label: 'Description + 3–4 points', hint: '1–2 sentences, then 3–4 points' },
+  { id: 'detailed', label: 'Detailed', hint: '2 sentences, then 5–6 points' },
+];
+export const DEFAULT_ANSWER_STYLE = 'balanced';

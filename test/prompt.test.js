@@ -42,3 +42,13 @@ test('floating window parses answers into description and points', async () => {
   assert.equal(p.question, 'What is NRM 2?');
   assert.deepEqual(p.blocks, [{ type: 'p', text: 'RICS rules for detailed measurement.' }, { type: 'ul', items: ['BOQs', 'Tender pricing'] }]);
 });
+
+test('each answer style has its own format rules', async () => {
+  const { buildSystemPrompt, buildAnswerMessages } = await import('../lib/prompt.js');
+  assert.match(buildSystemPrompt('points'), /No description line/);
+  assert.match(buildSystemPrompt('brief'), /No bullet points/);
+  assert.match(buildSystemPrompt('balanced'), /exactly 3-4 points/);
+  assert.match(buildSystemPrompt('detailed'), /5-6 points/);
+  assert.equal(buildSystemPrompt('unknown'), buildSystemPrompt('balanced'));
+  assert.match(buildAnswerMessages({ latest: 'x', style: 'brief' })[0].content, /2-3 sentences/);
+});

@@ -4,9 +4,10 @@ import { api } from './api.js';
 
 export const session = { me: null, models: null };
 
-export const DEFAULT_PREFS = { autoAnswer: true, theme: 'system', answerSize: 17, transcriptSize: 14, overlaySize: 22 };
+export const DEFAULT_PREFS = { autoAnswer: true, theme: 'system', answerSize: 17, transcriptSize: 14, overlaySize: 22, answerStyle: 'balanced' };
 
-export const pref = (k) => session.me?.prefs?.[k] ?? DEFAULT_PREFS[k];
+// Empty string means "use the default"
+export const pref = (k) => { const v = session.me?.prefs?.[k]; return v === undefined || v === null || v === '' ? DEFAULT_PREFS[k] : v; };
 
 const listeners = new Set();
 export function onPrefsChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }

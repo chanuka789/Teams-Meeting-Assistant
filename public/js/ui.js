@@ -126,6 +126,7 @@ export function segmented(options, value, onChange, ariaLabel) {
     }, o.icon && icon(o.icon), o.label)));
   };
   render(value);
+  wrap.setValue = render;
   return wrap;
 }
 
@@ -192,3 +193,119 @@ export function fmtDate(iso) {
 }
 
 export const timeStr = (d = new Date()) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+// ---------- searchable select (combobox) ----------
+// items: [{ value, label, sub, group, tags: [{ text, kind }] }]. Type to filter, ↑ ↓ Enter, Esc to close.
+let comboSeq = 0;
+export function combobox({ items, value, ariaLabel, placeholder = 'Search…', onChange }) {
+  const id = `cb${++comboSeq}`;
+  let current = value;
+  let open = false;
+  let active = -1;
+  let shown = [];
+
+  const valueLabel = h('span', { class: 'combo-value' });
+  const trigger = h('button', {
+    type: 'button', class: 'combo-trigger', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', 'aria-label': ariaLabel,
+  }, valueLabel, icon('chevron-down'));
+  const search = h('input', {
+    class: 'input', type: 'search', placeholder, autocomplete: 'off', spellcheck: 'false',
+    role: 'combobox', 'aria-expanded': 'true', 'aria-controls': `${id}-list`, 'aria-autocomplete': 'list', 'aria-label': `Search ${ariaLabel}`,
+  });
+  const list = h('div', { class: 'combo-list', role: 'listbox', id: `${id}-list`, 'aria-label': ariaLabel });
+  const count = h('div', { class: 'combo-count' });
+  const pop = h('div', { class: 'combo-pop', hidden: true }, h('div', { class: 'input-icon' }, icon('search'), search), list, count);
+  const wrap = h('div', { class: 'combo' }, trigger, pop);
+
+  const tagEls = (tags = []) => tags.map((t) => h('span', { class: `badge ${t.kind ? `badge-${t.kind}` : ''}` }, t.text));
+
+  function renderValue() {
+    const it = items.find((x) => x.value === current);
+    valueLabel.replaceChildren(it
+      ? h('span', { class: 'combo-main' }, h('b', {}, it.label), it.sub && h('span', { class: 'subtle' }, it.sub), tagEls(it.tags))
+      : h('span', { class: 'subtle' }, 'Choose…'));
+  }
+
+  function renderList() {
+    const terms = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+    shown = items.filter((it) => {
+      const hay = `${it.label} ${it.value} ${it.group || ''}`.toLowerCase(); // not the price text
+      return terms.every((t) => hay.includes(t));
+    });
+    const nodes = [];
+    let group = null;
+    shown.forEach((it, i) => {
+      if (it.group !== group) { group = it.group; if (group) nodes.push(h('div', { class: 'combo-group', role: 'presentation' }, group)); }
+      nodes.push(h('div', {
+        class: 'combo-opt', role: 'option', id: `${id}-o${i}`, 'aria-selected': String(it.value === current), 'data-i': i,
+        onmousedown: (e) => { e.preventDefault(); choose(i); },
+        onmousemove: () => setActive(i, false),
+      }, h('span', { class: 'combo-check' }, it.value === current ? icon('check') : null),
+      h('span', { class: 'combo-text' }, h('span', {}, it.label), it.sub && h('span', { class: 'subtle xs' }, it.sub)),
+      h('span', { class: 'combo-tags' }, tagEls(it.tags))));
+    });
+    if (!shown.length) nodes.push(h('div', { class: 'combo-empty' }, 'No matches'));
+    list.replaceChildren(...nodes);
+    count.textContent = `${shown.length} of ${items.length}`;
+    setActive(Math.max(0, shown.findIndex((x) => x.value === current)), true);
+  }
+
+  function setActive(i, scroll) {
+    active = i;
+    list.querySelectorAll('.combo-opt').forEach((o) => o.classList.toggle('active', Number(o.dataset.i) === i));
+    const el = list.querySelector(`[data-i="${i}"]`);
+    if (el) {
+      search.setAttribute('aria-activedescendant', el.id);
+      if (scroll) el.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function choose(i) {
+    const it = shown[i];
+    if (!it) return;
+    current = it.value;
+    renderValue();
+    close();
+    trigger.focus();
+    onChange(it.value);
+  }
+
+  function openPop() {
+    if (open) return;
+    open = true;
+    pop.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    const r = trigger.getBoundingClientRect();
+    pop.classList.toggle('up', r.bottom + 380 > window.innerHeight && r.top > 380);
+    search.value = '';
+    renderList();
+    search.focus();
+    document.addEventListener('mousedown', outside, true);
+  }
+  function close() {
+    if (!open) return;
+    open = false;
+    pop.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', outside, true);
+  }
+  const outside = (e) => { if (!wrap.contains(e.target)) close(); };
+
+  trigger.addEventListener('click', () => (open ? close() : openPop()));
+  trigger.addEventListener('keydown', (e) => {
+    if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); openPop(); }
+  });
+  search.addEventListener('input', renderList);
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(shown.length - 1, active + 1), true); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(0, active - 1), true); }
+    else if (e.key === 'Enter') { e.preventDefault(); choose(active); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); trigger.focus(); }
+    else if (e.key === 'Tab') close();
+  });
+
+  renderValue();
+  wrap.setValue = (v) => { current = v; renderValue(); };
+  wrap.setItems = (next) => { items = next; renderValue(); };
+  return wrap;
+}
