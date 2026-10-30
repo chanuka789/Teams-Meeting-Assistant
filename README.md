@@ -2,6 +2,8 @@
 
 A web app that listens to the **other people** in your Microsoft Teams meeting and shows short suggested answers on screen when someone asks you a question.
 
+Tuned for **RICS APC final interviews** (Quantity Surveying and Construction pathway): answers are 2-4 short points, experience questions use only your notes, technical and ethics answers follow current RICS standards, and the AI leaves out anything it is not sure of.
+
 - Hears only the other side: it captures the meeting's audio output, not your microphone. With headphones on, your own voice is never in that audio.
 - Speech-to-text and answers both go through **OpenRouter** (one API key).
 - Your notes (project facts, cost plan figures, dates) are used to answer. The AI is told not to invent figures that are not in your notes.
@@ -23,7 +25,7 @@ Use **Microphone (testing only)** to try the app without a meeting.
 ```
 Teams audio ─► browser (screen/tab share audio) ─► voice detection cuts speech at pauses
    ─► /api/transcribe ─► OpenRouter /audio/transcriptions (Whisper Large v3 Turbo)
-   ─► transcript ─► /api/answer ─► OpenRouter chat (Claude Haiku 5.5, streamed)
+   ─► transcript ─► /api/answer ─► OpenRouter chat (Claude Sonnet 5.5, streamed)
    ─► "NONE" (ignored) or "Q: … / A: …" card on screen
 ```
 
@@ -36,7 +38,7 @@ The server keeps the OpenRouter key secret; the browser never sees it.
 | `OPENROUTER_API_KEY` | yes | – | From https://openrouter.ai/keys |
 | `APP_PASSWORD` | strongly recommended | – | Without it anyone with the URL can use your credits |
 | `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Try `deepgram/nova-3` or `openai/gpt-4o-mini-transcribe` for accuracy |
-| `ANSWER_MODEL` | no | `anthropic/claude-haiku-5.5` | Any OpenRouter chat model |
+| `ANSWER_MODEL` | no | `anthropic/claude-sonnet-5.5` | Any OpenRouter chat model. `anthropic/claude-haiku-5.5` is faster/cheaper, less accurate |
 | `STT_LANGUAGE` | no | `en` | `auto` to let the model detect |
 
 ## Run locally

@@ -15,7 +15,7 @@ const config = {
   openrouterKey: process.env.OPENROUTER_API_KEY || '',
   appPassword: process.env.APP_PASSWORD || '',
   sttModel: process.env.STT_MODEL || 'openai/whisper-large-v3-turbo',
-  answerModel: process.env.ANSWER_MODEL || 'anthropic/claude-haiku-5.5',
+  answerModel: process.env.ANSWER_MODEL || 'anthropic/claude-sonnet-5.5',
   sttLanguage: process.env.STT_LANGUAGE || 'en',
   publicUrl: process.env.PUBLIC_URL || 'https://localhost',
 };
@@ -148,8 +148,8 @@ app.post('/api/answer', async (req, res) => {
         model: config.answerModel,
         messages,
         stream: true,
-        max_tokens: 400,
-        temperature: 0.2,
+        max_tokens: 250,
+        temperature: 0,
       }),
       signal: controller.signal,
     });

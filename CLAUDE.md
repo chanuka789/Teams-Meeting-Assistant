@@ -5,7 +5,7 @@ Live meeting assistant. Browser captures meeting audio (getDisplayMedia system/t
 
 ## Layout
 - `server.js` – Express server, `/api/transcribe`, `/api/answer` (streams plain text), `/api/config`, `/health`, password check (`x-app-password` header vs `APP_PASSWORD`).
-- `lib/prompt.js` – system prompt, message builder, hallucination filter. Answer format: `NONE` or `Q: …\nA: - …`.
+- `lib/prompt.js` – system prompt, message builder, hallucination filter. Answer format: `NONE` or `Q: …\nA:\n- …` (2-4 short points). Prompt is tuned for RICS APC final interviews (QS & Construction pathway).
 - `public/audio.js` – VAD (`SpeechSegmenter`), resample, WAV encode. Pure, unit tested.
 - `public/app.js` – UI, capture, pipeline. `public/capture-worklet.js` – AudioWorklet.
 - `test/` – `npm test` (node:test).

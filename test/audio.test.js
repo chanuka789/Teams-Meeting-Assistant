@@ -51,4 +51,5 @@ test('prompt helpers', () => {
   const m = buildAnswerMessages({ latest: 'When is handover?', transcript: '', notes: 'Handover June', role: '', manual: false });
   assert.equal(m[0].role, 'system');
   assert.match(m[1].content, /Handover June/);
+  assert.match(m[0].content, /RICS APC/);
 });
