@@ -1,6 +1,6 @@
 # APC Interview Assistant
 
-A web app for RICS APC final interviews (Quantity surveying and construction pathway). It listens to the **assessors** in your Microsoft Teams meeting, detects each question and shows a short description plus key points, using a shared **competency library** and your own private **case study**.
+A web app for RICS APC final interviews (Quantity surveying and construction pathway). It listens to the **assessors** in your Microsoft Teams meeting, detects each question and shows an answer in the style you choose (points only, short description only, description + 3–4 points, or detailed), using a shared **competency library** and your own private **case study**.
 
 - Hears only the other side: it captures the meeting's audio output (screen or tab share), never your microphone. Wear headphones.
 - English only. Filler ("mm-hmm", "okay") and noise are dropped before any AI call.
