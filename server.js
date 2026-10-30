@@ -53,32 +53,42 @@ app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] })
 // Client-side routes (#/library etc.) all load the same page
 app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-async function start() {
-  if (!pool) {
-    status.db = 'DATABASE_URL not set';
-    console.error('ERROR: DATABASE_URL is not set.');
-  } else {
+// Connection errors can have an empty message (e.g. AggregateError when the private network is not ready yet)
+const describe = (err) => err.message || err.code || err.errors?.map((e) => e.message || e.code).join('; ') || String(err);
+
+// The database may not be reachable for the first seconds after a deploy: retry with growing waits (~5 min)
+async function migrateWithRetry() {
+  for (let attempt = 1; attempt <= 10; attempt++) {
     try {
       await migrate();
       status.db = 'ok';
-      backfillDocumentText().catch((err) => console.error('[backfill]', err.message)); // in the background
+      console.log(`[db] ready${attempt > 1 ? ` after ${attempt} attempts` : ''}`);
+      backfillDocumentText().catch((err) => console.error('[backfill]', describe(err))); // in the background
+      return;
     } catch (err) {
-      status.db = 'error: ' + err.message;
-      console.error('[db] migration failed', err.message);
+      status.db = `error: ${describe(err)}`;
+      console.error(`[db] migration attempt ${attempt} failed: ${describe(err)}`);
+      await new Promise((r) => setTimeout(r, Math.min(60000, 1000 * 2 ** attempt)));
     }
   }
-  try {
-    await checkStorage();
-    status.storage = 'ok';
-  } catch (err) {
-    status.storage = 'error: ' + err.message;
-    console.error('[storage] check failed', err.message);
-  }
+}
+
+async function start() {
+  // Listen first, so the health check answers while the database and storage are checked
   app.listen(port, () => {
-    console.log(`APC Interview Assistant listening on :${port} | db ${status.db} | storage ${storageKind} ${status.storage}`);
+    console.log(`APC Interview Assistant listening on :${port}`);
     console.log(`STT model: ${config.sttModel} | Answer model: ${config.answerModel} | Detect model: ${config.detectModel}`);
     if (!config.openrouterKey) console.warn('WARNING: OPENROUTER_API_KEY is not set.');
   });
+  checkStorage()
+    .then(() => { status.storage = 'ok'; console.log(`[storage] ${storageKind} ok`); })
+    .catch((err) => { status.storage = `error: ${describe(err)}`; console.error('[storage] check failed', describe(err)); });
+  if (!pool) {
+    status.db = 'DATABASE_URL not set';
+    console.error('ERROR: DATABASE_URL is not set.');
+    return;
+  }
+  await migrateWithRetry();
 }
 
 start();
