@@ -7,6 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildAnswerMessages, isLikelyHallucination, isNoneReply } from './lib/prompt.js';
+import { isModelId, toAnswerModels, toSttModels, reasoningParam } from './public/models.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,7 +17,7 @@ const config = {
   appPassword: process.env.APP_PASSWORD || '',
   sttModel: process.env.STT_MODEL || 'openai/whisper-large-v3-turbo',
   answerModel: process.env.ANSWER_MODEL || 'anthropic/claude-sonnet-5.5',
-  // Sonnet 5.5 always reasons (no "none"); reasoning tokens count toward max_tokens.
+  // Default thinking level. Sonnet 5.5 always reasons (no "none"); reasoning tokens count toward max_tokens.
   answerReasoning: process.env.ANSWER_REASONING || 'low',
   sttLanguage: process.env.STT_LANGUAGE || 'en',
   publicUrl: process.env.PUBLIC_URL || 'https://localhost',
@@ -48,6 +49,7 @@ app.get('/api/config', (req, res) => {
     keyConfigured: Boolean(config.openrouterKey),
     sttModel: config.sttModel,
     answerModel: config.answerModel,
+    answerReasoning: config.answerReasoning,
   });
 });
 
@@ -86,20 +88,66 @@ function orHeaders(extra = {}) {
   };
 }
 
+// Live OpenRouter model lists, cached so settings and requests don't refetch every time
+const MODELS_TTL_MS = 60 * 60 * 1000;
+let modelCache = { at: 0, answer: [], stt: [] };
+
+async function loadModels() {
+  if (modelCache.answer.length && Date.now() - modelCache.at < MODELS_TTL_MS) return modelCache;
+  const get = async (query) => {
+    const r = await fetch(`${OPENROUTER}/models${query}`, { headers: orHeaders(), signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`model list failed (${r.status})`);
+    return (await r.json()).data || [];
+  };
+  const [chat, stt] = await Promise.all([get(''), get('?output_modalities=transcription')]);
+  modelCache = { at: Date.now(), answer: toAnswerModels(chat), stt: toSttModels(stt) };
+  return modelCache;
+}
+
+// Resolve the model a request asked for. Returns { id, info } or { error } for an unknown model.
+// If the list cannot be loaded, the id is trusted and info is null.
+async function pickModel(wanted, fallback, kind) {
+  const id = isModelId(wanted) ? wanted : fallback;
+  let list;
+  try { list = (await loadModels())[kind]; } catch (err) {
+    console.error('[models]', err.message);
+    return { id, info: null };
+  }
+  const info = list.find((m) => m.id === id);
+  if (!info) return { error: `Model "${id}" is not available on OpenRouter. Choose another in Notes & settings.` };
+  return { id, info };
+}
+
+app.get('/api/models', async (req, res) => {
+  try {
+    const { answer, stt } = await loadModels();
+    res.json({
+      answer,
+      stt,
+      defaults: { answerModel: config.answerModel, sttModel: config.sttModel, reasoning: config.answerReasoning },
+    });
+  } catch (err) {
+    console.error('[models]', err.message);
+    res.status(502).json({ error: 'Could not load the OpenRouter model list: ' + err.message });
+  }
+});
+
 // Speech-to-text: one short WAV segment -> text
 app.post('/api/transcribe', async (req, res) => {
   if (!requireKey(res)) return;
-  const { audio, format = 'wav' } = req.body || {};
+  const { audio, format = 'wav', model: wantedModel } = req.body || {};
   if (typeof audio !== 'string' || audio.length === 0) {
     return res.status(400).json({ error: 'Missing audio.' });
   }
   if (audio.length > MAX_AUDIO_BASE64) {
     return res.status(413).json({ error: 'Audio segment too large.' });
   }
+  const model = await pickModel(wantedModel, config.sttModel, 'stt');
+  if (model.error) return res.status(400).json({ error: model.error });
   const started = Date.now();
   try {
     const body = {
-      model: config.sttModel,
+      model: model.id,
       input_audio: { data: audio, format },
     };
     if (config.sttLanguage && config.sttLanguage !== 'auto') body.language = config.sttLanguage;
@@ -130,6 +178,13 @@ app.post('/api/answer', async (req, res) => {
   if (!requireKey(res)) return;
   const { latest = '', transcript = '', notes = '', role = '', manual = false } = req.body || {};
   if (!latest.trim()) return res.status(400).json({ error: 'Missing latest text.' });
+  const model = await pickModel(req.body.model, config.answerModel, 'answer');
+  if (model.error) return res.status(400).json({ error: model.error });
+  const wantedReasoning = typeof req.body.reasoning === 'string' ? req.body.reasoning : config.answerReasoning;
+  // Without model info (list unavailable) only the default model gets the default reasoning setting.
+  const reasoning = model.info
+    ? reasoningParam(model.info, wantedReasoning)
+    : model.id === config.answerModel ? { effort: config.answerReasoning, exclude: true } : undefined;
 
   const messages = buildAnswerMessages({
     latest: String(latest).slice(0, 4000),
@@ -147,12 +202,12 @@ app.post('/api/answer', async (req, res) => {
       method: 'POST',
       headers: orHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        model: config.answerModel,
+        model: model.id,
         messages,
         stream: true,
         // Room for reasoning plus the short answer; the prompt keeps the visible answer to 2-4 points.
-        max_tokens: 1500,
-        reasoning: { effort: config.answerReasoning, exclude: true },
+        max_tokens: 2000,
+        ...(reasoning && { reasoning }),
       }),
       signal: controller.signal,
     });
@@ -199,7 +254,7 @@ app.post('/api/answer', async (req, res) => {
       }
     }
     const kind = !reply.trim() ? 'EMPTY' : isNoneReply(reply) ? 'NONE' : 'answered';
-    console.log(`[answer] ${kind} manual=${Boolean(manual)} finish=${finish || '-'} ${Date.now() - started}ms`);
+    console.log(`[answer] ${kind} model=${model.id} reasoning=${reasoning?.effort || '-'} manual=${Boolean(manual)} finish=${finish || '-'} ${Date.now() - started}ms`);
     res.end();
   } catch (err) {
     if (err.name === 'AbortError') return; // client went away

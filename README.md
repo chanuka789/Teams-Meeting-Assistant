@@ -31,6 +31,10 @@ Teams audio ─► browser (screen/tab share audio) ─► voice detection cuts 
 
 The server keeps the OpenRouter key secret; the browser never sees it.
 
+## Choosing AI models
+
+In **Notes & settings → AI models** you can pick any answer model and speech-to-text model from the live OpenRouter list, and the thinking level. Your choice is saved in your browser. The environment variables below are only the defaults.
+
 ## Settings (environment variables)
 
 | Variable | Required | Default | Notes |

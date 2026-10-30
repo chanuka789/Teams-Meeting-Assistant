@@ -1,4 +1,5 @@
 import { SpeechSegmenter, resample, encodeWav, bytesToBase64, TARGET_RATE } from './audio.js';
+import { reasoningChoices } from './models.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -11,6 +12,8 @@ const els = {
   copyTranscriptBtn: $('copyTranscriptBtn'), clearTranscriptBtn: $('clearTranscriptBtn'),
   settingsDialog: $('settingsDialog'), roleInput: $('roleInput'), notesInput: $('notesInput'),
   autoAnswerInput: $('autoAnswerInput'), modelInfo: $('modelInfo'), logoutBtn: $('logoutBtn'),
+  answerModelSearch: $('answerModelSearch'), answerModelSelect: $('answerModelSelect'),
+  reasoningSelect: $('reasoningSelect'), sttModelSelect: $('sttModelSelect'), resetModelsBtn: $('resetModelsBtn'),
   loginDialog: $('loginDialog'), loginForm: $('loginForm'), passwordInput: $('passwordInput'), loginError: $('loginError'),
   toast: $('toast'),
 };
@@ -58,6 +61,11 @@ async function api(path, body) {
   if (res.status === 401) { showLogin('Wrong password.'); throw new Error('Not logged in'); }
   return res;
 }
+async function apiGet(path) {
+  const res = await fetch(path, { headers: { 'x-app-password': state.password } });
+  if (res.status === 401) { showLogin('Wrong password.'); throw new Error('Not logged in'); }
+  return res;
+}
 
 // ---------- settings ----------
 function loadSettings() {
@@ -70,7 +78,7 @@ function saveSettings() {
   store.set('ma_notes', els.notesInput.value);
   store.set('ma_auto', els.autoAnswerInput.checked ? '1' : '0');
 }
-els.settingsBtn.onclick = () => els.settingsDialog.showModal();
+els.settingsBtn.onclick = () => { els.settingsDialog.showModal(); loadModels(); };
 els.settingsDialog.addEventListener('close', saveSettings);
 els.logoutBtn.onclick = () => { store.del('ma_password'); state.password = ''; els.settingsDialog.close(); showLogin(); };
 
@@ -88,8 +96,125 @@ els.loginForm.addEventListener('submit', async (e) => {
     store.set('ma_password', state.password);
     els.loginDialog.close();
     toast('Unlocked');
+    loadModels();
   } catch { els.loginError.textContent = 'Could not reach the server.'; }
 });
+
+// ---------- AI model choice ----------
+// Empty stored value = use the server default.
+const models = { answer: [], stt: [], defaults: null, loading: null };
+const REASONING_LABELS = {
+  none: 'Off (fastest)', minimal: 'Minimal', low: 'Low (fast)', medium: 'Medium',
+  high: 'High (slower)', xhigh: 'Extra high (slow)', max: 'Max (slowest)',
+};
+const chosenAnswerModel = () => store.get('ma_answer_model') || models.defaults?.answerModel || '';
+const chosenSttModel = () => store.get('ma_stt_model') || models.defaults?.sttModel || '';
+const findModel = (list, id) => list.find((m) => m.id === id);
+
+function price(m) {
+  if (m.input == null || m.output == null) return '';
+  if (m.input === 0 && m.output === 0) return 'free';
+  return `$${m.input} / $${m.output} per 1M tokens`;
+}
+
+function loadModels() {
+  if (models.answer.length) return Promise.resolve();
+  models.loading ||= (async () => {
+    try {
+      const res = await apiGet('/api/models');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load models');
+      Object.assign(models, data);
+      // Forget choices that OpenRouter no longer offers
+      if (store.get('ma_answer_model') && !findModel(models.answer, store.get('ma_answer_model'))) {
+        store.del('ma_answer_model'); toast('Your chosen answer model is no longer available. Using the default.', true);
+      }
+      if (store.get('ma_stt_model') && !findModel(models.stt, store.get('ma_stt_model'))) {
+        store.del('ma_stt_model'); toast('Your chosen speech-to-text model is no longer available. Using the default.', true);
+      }
+      renderModelPickers();
+    } catch (e) {
+      els.modelInfo.textContent = e.message;
+    } finally {
+      models.loading = null;
+    }
+  })();
+  return models.loading;
+}
+
+function renderAnswerOptions() {
+  const q = els.answerModelSearch.value.trim().toLowerCase();
+  const current = chosenAnswerModel();
+  const list = models.answer.filter((m) => !q || m.id === current
+    || m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
+  const groups = new Map();
+  for (const m of list) {
+    const provider = m.name.includes(':') ? m.name.split(':')[0] : m.id.split('/')[0];
+    if (!groups.has(provider)) groups.set(provider, []);
+    groups.get(provider).push(m);
+  }
+  els.answerModelSelect.replaceChildren(...[...groups].map(([provider, items]) => {
+    const g = document.createElement('optgroup');
+    g.label = provider;
+    for (const m of items) {
+      const label = m.name.includes(':') ? m.name.split(':').slice(1).join(':').trim() : m.name;
+      const tags = [price(m), m.id === models.defaults?.answerModel ? 'default' : ''].filter(Boolean).join(' · ');
+      g.append(new Option(tags ? `${label} — ${tags}` : label, m.id, false, m.id === current));
+    }
+    return g;
+  }));
+}
+
+function renderReasoningOptions() {
+  const choices = reasoningChoices(findModel(models.answer, chosenAnswerModel()));
+  if (!choices.length) {
+    els.reasoningSelect.replaceChildren(new Option('Not used by this model', ''));
+    els.reasoningSelect.disabled = true;
+    return;
+  }
+  els.reasoningSelect.disabled = false;
+  const wanted = store.get('ma_reasoning') || models.defaults?.reasoning || 'low';
+  const selected = choices.includes(wanted) ? wanted : choices.includes('low') ? 'low' : choices[choices.length - 1];
+  els.reasoningSelect.replaceChildren(...choices.map((e) => new Option(REASONING_LABELS[e] || e, e, false, e === selected)));
+}
+
+function renderSttOptions() {
+  const current = chosenSttModel();
+  els.sttModelSelect.replaceChildren(...models.stt.map((m) =>
+    new Option(m.id === models.defaults?.sttModel ? `${m.name} — default` : m.name, m.id, false, m.id === current)));
+}
+
+function renderModelInfo() {
+  const a = findModel(models.answer, chosenAnswerModel());
+  const s = findModel(models.stt, chosenSttModel());
+  els.modelInfo.textContent = `${models.answer.length} answer models, ${models.stt.length} speech-to-text models. `
+    + `Using: ${a?.name || chosenAnswerModel()} · ${s?.name || chosenSttModel()}`;
+}
+
+function renderModelPickers() {
+  renderAnswerOptions();
+  renderReasoningOptions();
+  renderSttOptions();
+  renderModelInfo();
+}
+
+els.answerModelSearch.addEventListener('input', renderAnswerOptions);
+els.answerModelSelect.addEventListener('change', () => {
+  store.set('ma_answer_model', els.answerModelSelect.value);
+  renderReasoningOptions();
+  renderModelInfo();
+});
+els.reasoningSelect.addEventListener('change', () => store.set('ma_reasoning', els.reasoningSelect.value));
+els.sttModelSelect.addEventListener('change', () => {
+  store.set('ma_stt_model', els.sttModelSelect.value);
+  renderModelInfo();
+});
+els.resetModelsBtn.onclick = () => {
+  ['ma_answer_model', 'ma_stt_model', 'ma_reasoning'].forEach((k) => store.del(k));
+  els.answerModelSearch.value = '';
+  renderModelPickers();
+  toast('Models reset to defaults');
+};
 
 // ---------- transcript ----------
 function addPendingSegment() {
@@ -152,6 +277,8 @@ async function getAnswer(latest, manual = false) {
     transcript: recentTranscript(),
     notes: els.notesInput.value,
     role: els.roleInput.value,
+    model: store.get('ma_answer_model') || undefined,
+    reasoning: store.get('ma_reasoning') || undefined,
   };
   let res;
   try { res = await api('/api/answer', body); } catch (e) { return; }
@@ -215,7 +342,9 @@ async function handleSegment(samples, sampleRate) {
   state.inflight++;
   setStatus('Listening · transcribing…', 'busy');
   try {
-    const res = await api('/api/transcribe', { audio: bytesToBase64(wav), format: 'wav' });
+    const res = await api('/api/transcribe', {
+      audio: bytesToBase64(wav), format: 'wav', model: store.get('ma_stt_model') || undefined,
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { fillSegment(div, ''); toast(data.error || 'Transcription failed', true); return; }
     const text = (data.text || '').trim();
@@ -315,9 +444,10 @@ els.stopBtn.onclick = stop;
   }
   try {
     const cfg = await (await fetch('/api/config')).json();
-    els.modelInfo.textContent = `Speech-to-text: ${cfg.sttModel} · Answers: ${cfg.answerModel}`;
+    els.modelInfo.textContent = `Default models: ${cfg.answerModel} · ${cfg.sttModel}`;
     if (!cfg.keyConfigured) { setStatus('Server has no OpenRouter key', 'err'); toast('OPENROUTER_API_KEY is not set on the server yet.', true); }
     if (cfg.passwordRequired && !state.password) showLogin();
+    else if (cfg.keyConfigured) loadModels();
   } catch {
     setStatus('Server unreachable', 'err');
   }

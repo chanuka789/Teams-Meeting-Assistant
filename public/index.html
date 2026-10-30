@@ -69,7 +69,20 @@
         <input id="autoAnswerInput" type="checkbox" checked />
         Answer questions automatically
       </label>
-      <p class="muted small" id="modelInfo"></p>
+      <fieldset class="models">
+        <legend>AI models <span class="muted">(live list from OpenRouter)</span></legend>
+        <label for="answerModelSearch">Answer model</label>
+        <input id="answerModelSearch" type="search" placeholder="Search models, e.g. claude, gpt, gemini…" autocomplete="off" />
+        <select id="answerModelSelect" aria-label="Answer model"><option>Loading models…</option></select>
+        <label for="reasoningSelect">Thinking level <span class="muted">(higher = more careful, but slower)</span></label>
+        <select id="reasoningSelect"></select>
+        <label for="sttModelSelect">Speech-to-text model</label>
+        <select id="sttModelSelect"><option>Loading models…</option></select>
+        <div class="models-foot">
+          <p class="muted small" id="modelInfo"></p>
+          <button id="resetModelsBtn" type="button" class="ghost small">Reset to defaults</button>
+        </div>
+      </fieldset>
       <div class="dialog-actions">
         <button id="logoutBtn" type="button" class="ghost">Forget password</button>
         <button value="close" class="primary">Save &amp; close</button>
