@@ -207,9 +207,10 @@ function usageSection(me) {
     const stat = (label, v) => h('div', { class: 'stat' }, h('span', {}, label), h('b', {}, v));
     const block = (title, x) => h('div', { class: 'stack', style: { gap: '8px' } }, h('span', { class: 'label' }, title),
       h('div', { class: 'stats' },
-        stat('Total', formatUsd(x.total)), stat('Answer AI', formatUsd(x.answer)),
+        stat('Total', formatUsd(x.total)), stat('Live answers', formatUsd(x.answer)), stat('Chat', formatUsd(x.chat)),
         stat('Speech-to-text', formatUsd(x.stt)), stat('Question detection', formatUsd(x.detect))),
-      h('span', { class: 'hint' }, `${x.answers} answers · average ${x.answers ? formatUsd(x.answer / x.answers) : '–'} per answer`));
+      h('span', { class: 'hint' }, `Live: ${x.answers} answer${x.answers === 1 ? '' : 's'} · average ${x.answers ? formatUsd(x.answer / x.answers) : '–'} per answer`),
+      h('span', { class: 'hint' }, `Chat: ${x.chats} ${x.chats === 1 ? 'reply' : 'replies'} · average ${x.chats ? formatUsd(x.chat / x.chats) : '–'} per reply (follow-up suggestions included)`));
     body.replaceChildren(block('This month', u.month), block('All time', u.all));
     if (me.role === 'admin') {
       const key = h('div', { class: 'callout' }, icon('wallet'), h('div', {}, 'Loading OpenRouter account…'));

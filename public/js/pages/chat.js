@@ -1,7 +1,7 @@
 // Study chat: conversations with the AI that answers from the competency library and the user's case study,
 // cites its sources, and opens cited passages in a side viewer (scrolled to and briefly highlighted).
 
-import { reasoningChoices, splitCost } from '../../models.js';
+import { reasoningChoices, splitCost, formatUsd } from '../../models.js';
 import { h, icon, button, toast, openModal, confirmDialog, field, combobox, sizeStepper, fileTypeBadge } from '../ui.js';
 import { api } from '../api.js';
 import { pref, setPrefs, loadModels, session } from '../state.js';
@@ -448,7 +448,8 @@ export async function renderChat(page, params) {
             try { await navigator.clipboard.writeText(msg.content); toast('Answer copied'); } catch { toast('Copy failed', 'error'); }
           } }),
           isLast && button('', { icon: 'refresh-cw', variant: 'ghost', size: 'sm', ariaLabel: 'Regenerate answer', onClick: () => regenerate() }),
-          msg.model && h('span', { class: 'model' }, shortModel(msg.model))));
+          msg.model && h('span', { class: 'model' }, shortModel(msg.model)),
+          typeof msg.cost === 'number' && h('span', { class: 'msg-cost', title: 'What OpenRouter charged for this reply (USD)' }, formatUsd(msg.cost))));
       }
       body.replaceChildren(...nodes);
     };
@@ -524,7 +525,7 @@ export async function renderChat(page, params) {
         if (!frame) frame = requestAnimationFrame(() => { frame = 0; el.update(msg, false); scrollBottom(false); });
       }
       const { text, sources, meta } = splitCost(raw);
-      Object.assign(msg, { content: text, sources, id: meta.messageId });
+      Object.assign(msg, { content: text, sources, id: meta.messageId, cost: meta.cost });
       if (userMsg && meta.userMessageId) userMsg.id = meta.userMessageId;
       if (meta.title && chatId === st.chatId) setTitle(meta.title);
       if (!text.trim()) msg.error = 'The AI returned no answer. Please try again.';
@@ -546,13 +547,18 @@ export async function renderChat(page, params) {
     el.update(msg, true);
     scrollBottom(false);
     loadList();
-    if (!msg.error && !msg.stopped) suggestFollowups(el, chatId);
+    if (!msg.error && !msg.stopped) suggestFollowups(el, msg, chatId);
   }
 
   // Three follow-up questions under the latest answer (cheap fast model)
-  async function suggestFollowups(el, chatId) {
+  async function suggestFollowups(el, msg, chatId) {
     let data;
     try { data = await api('POST', `/api/chats/${chatId}/suggestions`); } catch { return; }
+    // The suggestions are charged to this reply too (the server adds them to its saved cost)
+    if (typeof data.cost === 'number' && el.isConnected && !st.streaming) {
+      msg.cost = (msg.cost || 0) + data.cost;
+      el.update(msg, true);
+    }
     if (chatId !== st.chatId || !el.isConnected || st.streaming || !data.suggestions?.length) return;
     el.querySelector('.msg-body').append(h('div', { class: 'followups', 'aria-label': 'Suggested follow-up questions' },
       data.suggestions.map((q) => h('button', { type: 'button', class: 'followup', onclick: () => { input.value = q; autosize(); send(); } },
