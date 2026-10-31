@@ -68,4 +68,5 @@ export const ICONS = {"mic":"<path d=\"M12 19v3\" /> <path d=\"M19 10v2a7 7 0 0 
   "messages-square":"<path d=\"M16 10a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 14.286V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z\" /> <path d=\"M20 9a2 2 0 0 1 2 2v10.286a.71.71 0 0 1-1.212.502l-2.202-2.202A2 2 0 0 0 17.172 19H10a2 2 0 0 1-2-2v-1\" />",
   "quote":"<path d=\"M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z\" /> <path d=\"M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z\" />",
   "panel-right-close":"<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> <path d=\"M15 3v18\" /> <path d=\"m8 9 3 3-3 3\" />",
-  "text-search":"<path d=\"M21 5H3\" /> <path d=\"M10 12H3\" /> <path d=\"M10 19H3\" /> <circle cx=\"17\" cy=\"15\" r=\"3\" /> <path d=\"m21 19-1.9-1.9\" />"};
+  "text-search":"<path d=\"M21 5H3\" /> <path d=\"M10 12H3\" /> <path d=\"M10 19H3\" /> <circle cx=\"17\" cy=\"15\" r=\"3\" /> <path d=\"m21 19-1.9-1.9\" />",
+  "sliders-horizontal":"<path d=\"M10 5H3\" /> <path d=\"M12 19H3\" /> <path d=\"M14 3v4\" /> <path d=\"M16 17v4\" /> <path d=\"M21 12h-9\" /> <path d=\"M21 19h-5\" /> <path d=\"M21 5h-7\" /> <path d=\"M8 10v4\" /> <path d=\"M8 12H3\" />"};

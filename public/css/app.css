@@ -819,3 +819,70 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
 .dd-opt[aria-selected="true"] { color: var(--accent); font-weight: 500; }
 .dd-opt[aria-disabled="true"] { opacity: .45; cursor: default; }
 .dd-empty { padding: 12px; text-align: center; color: var(--text-3); font-size: var(--t-sm); }
+
+/* ---------- compact type on phones (whole app) ---------- */
+@media (max-width: 640px) {
+  :root { --t-xs: 11px; --t-sm: 12px; --t-md: 13px; --t-base: 14px; --t-lg: 15px; --t-xl: 17px; --t-2xl: 20px; --t-3xl: 24px; }
+  .btn { height: 34px; }
+  .btn-lg { height: 40px; font-size: var(--t-md); }
+  .page-head h1 { font-size: var(--t-2xl); }
+}
+
+/* ---------- chat: tidier welcome, composer and header ---------- */
+.chat-welcome h2 { font-size: 22px; }
+.chat-welcome > p { font-size: var(--t-md); }
+.chat-head .mobile-menu, .opts-btn { display: none; }
+.tool-set { display: contents; }
+.opts-btn {
+  align-items: center; gap: 6px; height: 32px; max-width: 70%; padding: 0 10px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 99px; background: var(--surface-2); color: var(--text-2); font-size: var(--t-sm); font-weight: 500;
+}
+.opts-btn:hover, .opts-btn[aria-expanded="true"] { color: var(--text); border-color: var(--border-strong); }
+.opts-btn .icon { width: 14px; height: 14px; flex: none; }
+.opts-btn > .icon:last-child { width: 12px; height: 12px; transition: transform .15s var(--ease); }
+.opts-btn[aria-expanded="true"] > .icon:last-child { transform: rotate(180deg); }
+.opts-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@container chat (max-width: 640px) {
+  /* One-row composer: text, then options + send; settings open on demand */
+  .opts-btn { display: inline-flex; }
+  .tool-set { display: none; }
+  .composer.show-tools .tool-set { display: flex; flex-wrap: wrap; gap: 6px; order: 10; flex-basis: 100%; padding-top: 4px; }
+  .composer.show-tools .tool-set .dd, .composer.show-tools .tool-set .combo { flex: 1 1 calc(50% - 6px); max-width: none; }
+  .composer.show-tools .tool-set .dd-trigger, .composer.show-tools .tool-set .combo-trigger { width: 100%; max-width: none; }
+  .composer { border-radius: 18px; }
+  .composer textarea { min-height: 44px; padding: 12px 14px 2px; }
+  .composer-tools { padding: 4px 6px 6px 8px; }
+  .send-btn { width: 34px; height: 34px; }
+  .composer-hint { font-size: 11px; margin-top: 4px; }
+  .composer-hint .hint-long { display: none; }
+  /* Compact welcome */
+  .chat-welcome { justify-content: flex-start; gap: var(--s-2); padding: var(--s-6) var(--s-4) var(--s-4); }
+  .chat-welcome .logo { width: 40px; height: 40px; border-radius: 12px; }
+  .chat-welcome .logo .icon { width: 20px; height: 20px; }
+  .chat-welcome h2 { font-size: var(--t-xl); }
+  .chat-welcome > p { font-size: var(--t-sm); }
+  .starters { gap: var(--s-2); margin-top: var(--s-2); }
+  .starter { padding: 10px 12px; align-items: center; border-radius: var(--r-md); }
+  .starter .icon { width: 17px; height: 17px; margin: 0; }
+  .starter b { font-size: var(--t-md); }
+  .starter div > span { display: none; }
+  .chat-head { min-height: 48px; padding: 4px 8px; gap: 2px; }
+  .chat-head h1 { font-size: var(--t-md); }
+  .thread-inner { gap: var(--s-5); }
+  .msg-ai { grid-template-columns: 24px minmax(0, 1fr); gap: var(--s-2); }
+  .msg-ai .ai-avatar { width: 24px; height: 24px; border-radius: 7px; }
+  .msg-ai .ai-avatar .icon { width: 13px; height: 13px; }
+  .msg-body { padding-top: 1px; }
+  .msg-user { max-width: 90%; padding: 8px 14px; }
+}
+
+/* Phones and tablets: one header on the Chat page (the menu button moves into the chat header) */
+@media (max-width: 960px) {
+  .app:has(.chat-page) { grid-template-rows: 1fr; }
+  .app:has(.chat-page) .topbar { display: none; }
+  .chat-head .mobile-menu { display: inline-flex; }
+}
+
+/* Touch screens have no Enter/Shift keys to hint at */
+@media (hover: none) { .composer-hint .kbd-hint { display: none; } }

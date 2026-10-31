@@ -32,7 +32,7 @@ export async function renderChat(page, params) {
     chats: [], chatId: Number(params[0]) || null, title: 'New chat', messages: [],
     streaming: null, models: null, docCache: new Map(), viewer: null,
   };
-  page.style.setProperty('--chat-size', `${pref('chatSize') || 15}px`);
+  page.style.setProperty('--chat-size', `${pref('chatSize') || 14}px`);
 
   // ---------- conversation list ----------
   const listBody = h('div', { class: 'chat-list-body', role: 'list' });
@@ -49,10 +49,14 @@ export async function renderChat(page, params) {
 
   // ---------- conversation ----------
   const titleEl = h('h1', {}, 'New chat');
-  const sizer = sizeStepper(pref('chatSize') || 15, { min: 12, max: 24, label: 'chat', onChange: (v) => { setPrefs({ chatSize: v }); page.style.setProperty('--chat-size', `${v}px`); } });
+  const sizer = sizeStepper(pref('chatSize') || 14, { min: 12, max: 24, label: 'chat', onChange: (v) => { setPrefs({ chatSize: v }); page.style.setProperty('--chat-size', `${v}px`); } });
   sizer.classList.add('hide-narrow');
   const exportBtn = button('', { icon: 'download', variant: 'ghost', size: 'sm', ariaLabel: 'Export chat as a Markdown file', onClick: exportChat });
+  // Phones and tablets: the app menu button lives in this header (the app's own top bar is hidden on Chat)
+  const appMenu = button('', { icon: 'menu', variant: 'ghost', size: 'sm', ariaLabel: 'Open menu', onClick: () => document.querySelector('.app')?.classList.add('nav-open') });
+  appMenu.classList.add('mobile-menu');
   const head = h('header', { class: 'chat-head' },
+    appMenu,
     button('', { icon: 'panel-left', variant: 'ghost', size: 'sm', ariaLabel: 'Show or hide chat list', onClick: () => setListOpen(layout.classList.contains('list-closed')) }),
     titleEl, sizer, exportBtn,
     button('', { icon: 'plus', variant: 'ghost', size: 'sm', ariaLabel: 'New chat', onClick: () => newChat() }));
@@ -64,7 +68,7 @@ export async function renderChat(page, params) {
   thread.addEventListener('scroll', () => jump.classList.toggle('show', !nearBottom() && Boolean(st.messages.length)));
 
   // composer
-  const input = h('textarea', { rows: '1', placeholder: 'Ask about your competencies, RICS standards or your case study…', 'aria-label': 'Message' });
+  const input = h('textarea', { rows: '1', placeholder: 'Ask about RICS, your competencies or case study…', 'aria-label': 'Message' });
   const sendBtn = button('', { icon: 'arrow-up', variant: 'primary', ariaLabel: 'Send message', type: 'submit' });
   sendBtn.classList.add('send-btn');
   const stopBtn = button('', { icon: 'square', variant: 'danger', ariaLabel: 'Stop generating', onClick: stop });
@@ -78,11 +82,19 @@ export async function renderChat(page, params) {
   h('option', { value: 'all' }, 'Search: All documents'), h('option', { value: 'library' }, 'Search: Competency library'), h('option', { value: 'case_study' }, 'Search: My case study'));
   const length = h('select', { class: 'select select-sm', 'aria-label': 'Answer length', onchange: () => setPrefs({ chatLength: length.value }) },
     LENGTHS.map(([v, l]) => h('option', { value: v, selected: v === (pref('chatLength') || 'standard') }, l)));
+  // Narrow screens: the four settings fold behind one "options" button that shows the current model
+  const optsLabel = h('span', { class: 'opts-label' }, 'Options');
+  const optionsBtn = h('button', { type: 'button', class: 'opts-btn', 'aria-expanded': 'false', 'aria-label': 'Chat options: model, thinking, documents and length',
+    onclick: () => { const on = composer.classList.toggle('show-tools'); optionsBtn.setAttribute('aria-expanded', String(on)); } },
+  icon('sliders-horizontal'), optsLabel, icon('chevron-down'));
   const composer = h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(); } },
     input,
-    h('div', { class: 'composer-tools' }, modelSlot, thinking, scope, length, h('span', { class: 'spacer' }), stopBtn, sendBtn));
+    h('div', { class: 'composer-tools' },
+      optionsBtn,
+      h('div', { class: 'tool-set' }, modelSlot, thinking, scope, length),
+      h('span', { class: 'spacer' }), stopBtn, sendBtn));
   const composerWrap = h('div', { class: 'composer-wrap' }, composer,
-    h('p', { class: 'composer-hint' }, 'Answers use your documents and cite them. AI can make mistakes: check important facts.',
+    h('p', { class: 'composer-hint' }, h('span', { class: 'hint-long' }, 'Answers use your documents and cite them. '), 'AI can make mistakes: check important facts.',
       h('span', { class: 'kbd-hint' }, ' ', h('span', { class: 'kbd' }, 'Enter'), ' to send, ', h('span', { class: 'kbd' }, 'Shift'), '+', h('span', { class: 'kbd' }, 'Enter'), ' for a new line.')));
   input.addEventListener('input', autosize);
   input.addEventListener('keydown', (e) => {
@@ -95,6 +107,10 @@ export async function renderChat(page, params) {
   page.replaceChildren(h('h1', { class: 'sr-only' }, 'Chat'), layout);
 
   const narrow = () => layout.clientWidth <= 1000;
+  // Shorter placeholder where the long one would wrap
+  new ResizeObserver(() => {
+    input.placeholder = main.clientWidth <= 480 ? 'Ask a question…' : 'Ask about RICS, your competencies or case study…';
+  }).observe(main);
   function setListOpen(open) {
     layout.classList.toggle('list-closed', !open);
     if (!narrow()) setPrefs({ chatListOpen: open });
@@ -128,10 +144,11 @@ export async function renderChat(page, params) {
       const picker = combobox({
         items: chatItems(st.models.answer, d.answerModel), value: current(), compact: true, ariaLabel: 'Chat model',
         placeholder: 'Search models, e.g. sonnet, opus, gpt…',
-        onChange: (v) => { setPrefs({ chatModel: v, chatReasoning: '' }); drawThinking(); },
+        onChange: (v) => { setPrefs({ chatModel: v, chatReasoning: '' }); drawThinking(); optsLabel.textContent = shortModel(v); },
       });
       modelSlot.replaceWith(picker);
       drawThinking();
+      optsLabel.textContent = shortModel(current());
     } catch {
       modelSlot.replaceWith(h('span', { class: 'subtle small' }, 'Models unavailable'));
       (thinking.closest('.dd') || thinking).hidden = true;
