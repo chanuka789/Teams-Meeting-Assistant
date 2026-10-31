@@ -689,8 +689,6 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
 .composer:focus-within { border-color: var(--primary); }
 .composer textarea { display: block; width: 100%; min-height: 52px; max-height: 220px; resize: none; border: 0; outline: 0; background: transparent; color: var(--text); padding: 14px 16px 6px; font-size: var(--chat-size); line-height: 1.5; }
 .composer textarea::placeholder { color: var(--text-3); }
-.composer-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 8px 8px 12px; }
-.composer-tools .select-sm { max-width: 190px; }
 .send-btn { width: 36px; height: 36px; border-radius: 50%; padding: 0; }
 .send-btn .icon { width: 18px; height: 18px; }
 .composer-hint { max-width: 820px; margin: 6px auto 0; text-align: center; font-size: var(--t-xs); color: var(--text-3); }
@@ -750,7 +748,6 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
   .chat-head .hide-narrow { display: none; }
 }
 @container chat (max-width: 520px) {
-  .composer-tools .select-sm { max-width: 132px; }
   .composer-hint .kbd-hint { display: none; }
   .doc-text { padding: var(--s-4); }
 }
@@ -828,31 +825,25 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
   .page-head h1 { font-size: var(--t-2xl); }
 }
 
-/* ---------- chat: tidier welcome, composer and header ---------- */
+/* ---------- chat: settings bar at the top, one-row composer ---------- */
 .chat-welcome h2 { font-size: 22px; }
 .chat-welcome > p { font-size: var(--t-md); }
-.chat-head .mobile-menu, .opts-btn { display: none; }
-.tool-set { display: contents; }
-.opts-btn {
-  align-items: center; gap: 6px; height: 32px; max-width: 70%; padding: 0 10px; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 99px; background: var(--surface-2); color: var(--text-2); font-size: var(--t-sm); font-weight: 500;
-}
-.opts-btn:hover, .opts-btn[aria-expanded="true"] { color: var(--text); border-color: var(--border-strong); }
-.opts-btn .icon { width: 14px; height: 14px; flex: none; }
-.opts-btn > .icon:last-child { width: 12px; height: 12px; transition: transform .15s var(--ease); }
-.opts-btn[aria-expanded="true"] > .icon:last-child { transform: rotate(180deg); }
-.opts-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-head .mobile-menu { display: none; }
+.chat-tools { padding: 8px var(--s-5); background: var(--surface); border-bottom: 1px solid var(--border); }
+.chat-tools-inner { max-width: 820px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.composer { display: flex; align-items: flex-end; gap: 6px; }
+.composer textarea { flex: 1; min-width: 0; padding: 14px 4px 14px 16px; }
+.composer-actions { flex: none; padding: 8px 8px 8px 0; display: flex; }
 
 @container chat (max-width: 640px) {
-  /* One-row composer: text, then options + send; settings open on demand */
-  .opts-btn { display: inline-flex; }
-  .tool-set { display: none; }
-  .composer.show-tools .tool-set { display: flex; flex-wrap: wrap; gap: 6px; order: 10; flex-basis: 100%; padding-top: 4px; }
-  .composer.show-tools .tool-set .dd, .composer.show-tools .tool-set .combo { flex: 1 1 calc(50% - 6px); max-width: none; }
-  .composer.show-tools .tool-set .dd-trigger, .composer.show-tools .tool-set .combo-trigger { width: 100%; max-width: none; }
+  /* Settings as a compact 2 x 2 grid */
+  .chat-tools { padding: 6px var(--s-3) 8px; }
+  .chat-tools-inner { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .chat-tools .dd, .chat-tools .combo { width: 100%; max-width: none; }
+  .chat-tools .dd-trigger, .chat-tools .combo-trigger { width: 100%; max-width: none; }
   .composer { border-radius: 18px; }
-  .composer textarea { min-height: 44px; padding: 12px 14px 2px; }
-  .composer-tools { padding: 4px 6px 6px 8px; }
+  .composer textarea { min-height: 44px; padding: 12px 4px 12px 14px; }
+  .composer-actions { padding: 6px 6px 6px 0; }
   .send-btn { width: 34px; height: 34px; }
   .composer-hint { font-size: 11px; margin-top: 4px; }
   .composer-hint .hint-long { display: none; }

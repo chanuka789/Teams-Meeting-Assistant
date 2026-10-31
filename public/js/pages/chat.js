@@ -82,17 +82,12 @@ export async function renderChat(page, params) {
   h('option', { value: 'all' }, 'Search: All documents'), h('option', { value: 'library' }, 'Search: Competency library'), h('option', { value: 'case_study' }, 'Search: My case study'));
   const length = h('select', { class: 'select select-sm', 'aria-label': 'Answer length', onchange: () => setPrefs({ chatLength: length.value }) },
     LENGTHS.map(([v, l]) => h('option', { value: v, selected: v === (pref('chatLength') || 'standard') }, l)));
-  // Narrow screens: the four settings fold behind one "options" button that shows the current model
-  const optsLabel = h('span', { class: 'opts-label' }, 'Options');
-  const optionsBtn = h('button', { type: 'button', class: 'opts-btn', 'aria-expanded': 'false', 'aria-label': 'Chat options: model, thinking, documents and length',
-    onclick: () => { const on = composer.classList.toggle('show-tools'); optionsBtn.setAttribute('aria-expanded', String(on)); } },
-  icon('sliders-horizontal'), optsLabel, icon('chevron-down'));
+  // Chat settings sit in a bar at the top of the conversation; the composer is just text + send
+  const tools = h('div', { class: 'chat-tools', role: 'toolbar', 'aria-label': 'Chat settings' },
+    h('div', { class: 'chat-tools-inner' }, modelSlot, thinking, scope, length));
   const composer = h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(); } },
     input,
-    h('div', { class: 'composer-tools' },
-      optionsBtn,
-      h('div', { class: 'tool-set' }, modelSlot, thinking, scope, length),
-      h('span', { class: 'spacer' }), stopBtn, sendBtn));
+    h('div', { class: 'composer-actions' }, stopBtn, sendBtn));
   const composerWrap = h('div', { class: 'composer-wrap' }, composer,
     h('p', { class: 'composer-hint' }, h('span', { class: 'hint-long' }, 'Answers use your documents and cite them. '), 'AI can make mistakes: check important facts.',
       h('span', { class: 'kbd-hint' }, ' ', h('span', { class: 'kbd' }, 'Enter'), ' to send, ', h('span', { class: 'kbd' }, 'Shift'), '+', h('span', { class: 'kbd' }, 'Enter'), ' for a new line.')));
@@ -101,7 +96,7 @@ export async function renderChat(page, params) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
 
-  const main = h('section', { class: 'chat-main', 'aria-label': 'Conversation' }, head, thread, composerWrap);
+  const main = h('section', { class: 'chat-main', 'aria-label': 'Conversation' }, head, tools, thread, composerWrap);
   const viewer = h('aside', { class: 'viewer', 'aria-label': 'Document viewer', hidden: true });
   const layout = h('div', { class: 'chat-layout' }, list, h('div', { class: 'chat-scrim', onclick: () => setListOpen(false) }), main, viewer);
   page.replaceChildren(h('h1', { class: 'sr-only' }, 'Chat'), layout);
@@ -144,11 +139,10 @@ export async function renderChat(page, params) {
       const picker = combobox({
         items: chatItems(st.models.answer, d.answerModel), value: current(), compact: true, ariaLabel: 'Chat model',
         placeholder: 'Search models, e.g. sonnet, opus, gpt…',
-        onChange: (v) => { setPrefs({ chatModel: v, chatReasoning: '' }); drawThinking(); optsLabel.textContent = shortModel(v); },
+        onChange: (v) => { setPrefs({ chatModel: v, chatReasoning: '' }); drawThinking(); },
       });
       modelSlot.replaceWith(picker);
       drawThinking();
-      optsLabel.textContent = shortModel(current());
     } catch {
       modelSlot.replaceWith(h('span', { class: 'subtle small' }, 'Models unavailable'));
       (thinking.closest('.dd') || thinking).hidden = true;
