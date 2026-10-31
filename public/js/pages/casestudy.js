@@ -1,9 +1,8 @@
 // My case study: each user's private documents, used when assessors ask about the case study
 
-import { h, icon, button, toast, confirmDialog, emptyState, fileTypeBadge, dropzone, fmtBytes, fmtDate } from '../ui.js';
+import { h, icon, button, toast, confirmDialog, emptyState, fileTypeBadge, dropzone } from '../ui.js';
 import { api } from '../api.js';
-import { uploadQueue } from './uploads.js';
-import { ACCEPT } from './library.js';
+import { uploadQueue, docMeta, docActions, refreshWhileProcessing, ACCEPT, ACCEPT_TEXT } from './uploads.js';
 
 export async function renderCaseStudy(page) {
   const listCard = h('div', { class: 'card' });
@@ -19,7 +18,7 @@ export async function renderCaseStudy(page) {
       h('div', {}, h('b', {}, 'Private to you. '), 'Other users, including admins, cannot see or open your case study documents.')),
     dropzone({
       title: 'Upload case study documents',
-      text: 'Drag files here or click to choose. PDF, Word (.docx), PowerPoint (.pptx), TXT, Markdown · max 50 MB each.',
+      text: `Drag files here or click to choose. ${ACCEPT_TEXT}. Recordings are transcribed and organised into notes.`,
       accept: ACCEPT,
       onFiles: (files) => queue.add(files, (f) => `/api/documents?scope=case_study&name=${encodeURIComponent(f.name)}`, load),
     }),
@@ -31,7 +30,8 @@ export async function renderCaseStudy(page) {
         h('li', {}, h('span', {}, h('b', {}, 'Case study report'), ' – the full submitted version (Word or PDF).')),
         h('li', {}, h('span', {}, h('b', {}, 'Presentation slides'), ' – your 10-minute presentation (.pptx). Speaker notes are read too.')),
         h('li', {}, h('span', {}, h('b', {}, 'Key figures'), ' – cost plans, valuations, variation logs or a one-page summary of numbers and dates.')),
-        h('li', {}, h('span', {}, h('b', {}, 'Lessons and reflections'), ' – what went well, what you would do differently, and why.')))));
+        h('li', {}, h('span', {}, h('b', {}, 'Lessons and reflections'), ' – what went well, what you would do differently, and why.')),
+        h('li', {}, h('span', {}, h('b', {}, 'Recordings'), ' – e.g. you talking through your case study or a mock interview (MP3, M4A…). They are turned into organised notes.')))));
 
   async function load() {
     const docs = await api('GET', '/api/documents?scope=case_study');
@@ -40,15 +40,15 @@ export async function renderCaseStudy(page) {
       docs.length
         ? h('div', { class: 'doc-list' }, docs.map((d) => h('div', { class: 'doc' },
           fileTypeBadge(d.name),
-          h('div', { class: 'meta' }, h('b', { title: d.name }, d.name),
-            h('span', {}, `${fmtBytes(d.size)} · ${d.chars ? `${d.chars.toLocaleString()} characters` : 'no text found'} · added ${fmtDate(d.createdAt)}`)),
+          h('div', { class: 'meta' }, h('b', { title: d.name }, d.name), docMeta({ ...d, uploadedBy: null })),
           h('div', { class: 'actions' },
-            h('a', { class: 'btn btn-ghost btn-sm btn-icon', href: `/api/documents/${d.id}/file`, target: '_blank', rel: 'noopener', title: 'Open', 'aria-label': `Open ${d.name}` }, icon('external-link')),
+            ...docActions(d, { canChange: true, onChanged: load }),
             button('', { icon: 'trash-2', variant: 'ghost', size: 'sm', ariaLabel: `Delete ${d.name}`, onClick: async () => {
               if (!(await confirmDialog({ title: 'Delete document?', message: `“${d.name}” will be permanently deleted.`, confirmLabel: 'Delete', danger: true }))) return;
               try { await api('DELETE', `/api/documents/${d.id}`); toast('Document deleted'); await load(); } catch (e) { toast(e.message, 'error'); }
             } })))))
         : emptyState({ icon: 'briefcase', title: 'No case study documents yet', text: 'Upload your case study so the assistant can answer questions about it in your own words and figures.' }));
+    refreshWhileProcessing(docs, page, load);
   }
 
   await load();

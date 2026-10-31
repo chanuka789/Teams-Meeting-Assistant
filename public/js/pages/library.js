@@ -1,9 +1,9 @@
 // Competency library: shared RICS documents organised by competency. Admins upload and organise.
 
-import { h, icon, button, toast, field, openModal, confirmDialog, emptyState, fileTypeBadge, dropzone, fmtBytes, fmtDate } from '../ui.js';
+import { h, icon, button, toast, field, openModal, confirmDialog, emptyState, fileTypeBadge, dropzone } from '../ui.js';
 import { api } from '../api.js';
 import { session } from '../state.js';
-import { uploadQueue } from './uploads.js';
+import { uploadQueue, docMeta, docActions, refreshWhileProcessing, ACCEPT, ACCEPT_TEXT } from './uploads.js';
 
 const GROUPS = [
   { key: 'mandatory', label: 'Mandatory' },
@@ -11,7 +11,7 @@ const GROUPS = [
   { key: 'optional', label: 'Optional' },
   { key: 'general', label: 'General' },
 ];
-export const ACCEPT = '.pdf,.docx,.pptx,.txt,.md,.csv';
+
 
 export async function renderLibrary(page, params) {
   const isAdmin = session.me.role === 'admin';
@@ -40,6 +40,7 @@ export async function renderLibrary(page, params) {
     if (!selected || !comps.some((c) => c.id === selected)) selected = comps[0]?.id ?? null;
     renderList();
     renderDetail();
+    refreshWhileProcessing(docs, page, load);
   }
 
   function select(id) {
@@ -70,11 +71,9 @@ export async function renderLibrary(page, params) {
       fileTypeBadge(d.name),
       h('div', { class: 'meta' },
         h('b', { title: d.name }, d.name),
-        h('span', {}, [filter && comp ? `${comp.name} · ` : '', fmtBytes(d.size), ' · ',
-          d.chars ? `${d.chars.toLocaleString()} characters` : 'no text found', ' · added ', fmtDate(d.createdAt),
-          d.uploadedBy ? ` by ${d.uploadedBy}` : ''].join(''))),
+        docMeta(d, filter && comp ? `${comp.name} · ` : '')),
       h('div', { class: 'actions' },
-        h('a', { class: 'btn btn-ghost btn-sm btn-icon', href: `/api/documents/${d.id}/file`, target: '_blank', rel: 'noopener', title: 'Open', 'aria-label': `Open ${d.name}` }, icon('external-link')),
+        ...docActions(d, { canChange: isAdmin, onChanged: load }),
         isAdmin && button('', { icon: 'folder-input', variant: 'ghost', size: 'sm', ariaLabel: `Move ${d.name}`, onClick: () => moveDoc(d) }),
         isAdmin && button('', { icon: 'trash-2', variant: 'ghost', size: 'sm', ariaLabel: `Delete ${d.name}`, onClick: () => deleteDoc(d) })));
   }
@@ -102,7 +101,7 @@ export async function renderLibrary(page, params) {
         h('p', { class: 'muted' }, `${mine.length} document${mine.length === 1 ? '' : 's'}`)),
       isAdmin && dropzone({
         title: 'Upload documents to this competency',
-        text: 'Drag files here or click to choose. PDF, Word (.docx), PowerPoint (.pptx), TXT, Markdown · max 50 MB each.',
+        text: `Drag files here or click to choose. ${ACCEPT_TEXT}. Recordings are transcribed and organised into notes.`,
         accept: ACCEPT,
         onFiles: (files) => queue.add(files, (f) => `/api/documents?scope=library&competencyId=${c.id}&name=${encodeURIComponent(f.name)}`, load),
       }),

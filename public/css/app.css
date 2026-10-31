@@ -1128,3 +1128,15 @@ button.voice-orb:not(:disabled):hover { box-shadow: 0 0 0 4px var(--accent-soft)
   .usage { padding: var(--s-3) var(--s-4) var(--s-2); }
   .usage-total b { font-size: 26px; }
 }
+
+/* Audio knowledge files */
+.ftype.audio { background: #7c4dcc; display: inline-flex; flex-direction: column; gap: 1px; }
+.ftype.audio .icon { width: 14px; height: 14px; }
+.ftype.audio small { font-size: 8px; }
+.doc-status { display: inline-flex; align-items: center; gap: 6px; color: var(--primary); }
+.doc-status .icon { width: 14px; height: 14px; flex: none; }
+.doc-status.failed { color: var(--danger); }
+.notes-view { max-height: min(70vh, 720px); overflow-y: auto; font-size: var(--t-md); line-height: 1.65; padding-right: 4px; }
+.notes-view h2 { font-size: var(--t-xl); margin: 0 0 .4em; }
+.notes-view h3 { font-size: var(--t-lg); margin: 1.2em 0 .4em; }
+.notes-view h4 { font-size: var(--t-base); margin: 1em 0 .3em; }

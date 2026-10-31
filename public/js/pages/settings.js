@@ -335,12 +335,38 @@ function advancedSection(models) {
   const reset = button('Reset all models', { icon: 'eraser', onClick: () => {
     setPrefs({
       answerModel: '', reasoning: '', detectModel: '', sttModel: '', answerStyle: '', chatModel: '', chatReasoning: '',
-      voiceSttModel: '', voiceChatModel: '', voiceReasoning: '', voiceModel: '', voiceName: '',
+      voiceSttModel: '', voiceChatModel: '', voiceReasoning: '', voiceModel: '', voiceName: '', knowledgeSttModel: '', knowledgeModel: '',
     });
     document.querySelectorAll('.set-section').forEach((s) => s.reset?.());
     toast('All models reset to the defaults');
   } });
   const slot = loading();
+  const audioSlots = [loading(), loading()];
+  const el = section('advanced', 'Advanced', null,
+    card('Audio knowledge files', [
+      row('Transcription model', 'Turns uploaded recordings into text. Low cost, with RICS word hints.', audioSlots[0]),
+      row('Notes model', 'Organises the transcript into notes with headings, using only what was said. A cheap model is enough.', audioSlots[1]),
+    ]),
+    card(null, [
+      row('Fast decisions (Jev 1.14)', h('span', {},
+        'Decides in about 0.1 s whether speech is a question, picks the likely competency and source for searches, and skips searching for messages like “thanks”. ',
+        h('span', { class: 'subtle' }, 'Uses typesafe/jev-1.14. If it fails, the app works as before.')), slot),
+      row('Reset models', 'Go back to the default model, thinking level and voice everywhere.', reset),
+    ]));
+  models.then((data) => {
+    const d = data.defaults;
+    const stt = combobox({
+      items: sttItems(data.stt, d.knowledgeSttModel), value: pref('knowledgeSttModel') || d.knowledgeSttModel, ariaLabel: 'Transcription model',
+      placeholder: 'Search speech-to-text models…', onChange: (v) => { setPrefs({ knowledgeSttModel: v }); saved('Transcription model'); },
+    });
+    const notes = combobox({
+      items: chatItems(data.answer, d.knowledgeModel), value: pref('knowledgeModel') || d.knowledgeModel, ariaLabel: 'Notes model',
+      placeholder: 'Search models…', onChange: (v) => { setPrefs({ knowledgeModel: v }); saved('Notes model'); },
+    });
+    audioSlots[0].replaceWith(stt);
+    audioSlots[1].replaceWith(notes);
+    el.reset = () => { stt.setValue(d.knowledgeSttModel); notes.setValue(d.knowledgeModel); };
+  }).catch((e) => audioSlots[0].replaceWith(failed(e)));
   models.then((data) => {
     const model = data.defaults.decisionModel;
     if (!model) { slot.replaceWith(h('span', { class: 'set-hint' }, 'Turned off on the server (DECISION_MODEL is empty).')); return; }
@@ -348,13 +374,7 @@ function advancedSection(models) {
     t.querySelector('input').setAttribute('aria-label', 'Fast decisions');
     slot.replaceWith(t);
   }).catch(() => slot.replaceWith(h('span')));
-  return section('advanced', 'Advanced', null,
-    card(null, [
-      row('Fast decisions (Jev 1.14)', h('span', {},
-        'Decides in about 0.1 s whether speech is a question, picks the likely competency and source for searches, and skips searching for messages like “thanks”. ',
-        h('span', { class: 'subtle' }, 'Uses typesafe/jev-1.14. If it fails, the app works as before.')), slot),
-      row('Reset models', 'Go back to the default model, thinking level and voice everywhere.', reset),
-    ]));
+  return el;
 }
 
 // ---------- usage ----------
@@ -373,6 +393,8 @@ function usageSection(me) {
       { name: 'Voice', icon: 'audio-lines', cost: x.voice, note: `${plural(x.voiceTurns, 'spoken turn', 'spoken turns')} · your speech to text, and replies read aloud` },
       { name: 'Live speech-to-text', icon: 'captions', cost: x.stt, note: 'The assessors’ speech in Live interview' },
       { name: 'Question detection', icon: 'text-search', cost: x.detect, note: 'Finding questions in Live interview' },
+      { name: 'Audio knowledge files', icon: 'file-audio', cost: x.knowledge,
+        note: `${plural(x.audioFiles || 0, 'recording', 'recordings')} · ${x.audioMinutes || 0} min · transcribed and organised into notes` },
     ];
     const max = Math.max(...cats.map((c) => c.cost), 0.000001);
     body.replaceChildren(

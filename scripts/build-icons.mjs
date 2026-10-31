@@ -11,7 +11,7 @@ const ICONS = [
   'type', 'send', 'eraser', 'headphones', 'cloud-upload', 'folder', 'layers', 'bot', 'gauge', 'eye', 'log-in',
   'picture-in-picture-2', 'chevron-left', 'captions',
   'refresh-cw', 'square', 'arrow-up', 'download', 'list', 'ellipsis', 'messages-square', 'quote', 'panel-right-close', 'text-search',
-  'sliders-horizontal', 'pin', 'pin-off', 'keyboard', 'corner-down-left', 'mic-off', 'graduation-cap', 'volume-x', 'volume-2', 'flag',
+  'sliders-horizontal', 'pin', 'pin-off', 'keyboard', 'corner-down-left', 'mic-off', 'graduation-cap', 'volume-x', 'volume-2', 'flag', 'file-audio', 'play',
 ];
 
 const out = {};

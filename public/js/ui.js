@@ -158,7 +158,9 @@ export function emptyState({ icon: ic, title, text, extra }) {
 
 export function fileTypeBadge(name) {
   const ext = String(name).toLowerCase().split('.').pop();
-  const kind = ['pdf', 'docx', 'pptx'].includes(ext) ? ext : 'text';
+  const audio = ['mp3', 'm4a', 'mp4', 'aac', 'wav', 'ogg', 'oga', 'opus', 'webm', 'flac', 'mpga', 'mpeg'].includes(ext);
+  const kind = ['pdf', 'docx', 'pptx'].includes(ext) ? ext : audio ? 'audio' : 'text';
+  if (audio) return h('span', { class: 'ftype audio', 'aria-hidden': 'true' }, icon('audio-lines'), h('small', {}, ext.toUpperCase().slice(0, 4)));
   return h('span', { class: `ftype ${kind}`, 'aria-hidden': 'true' }, kind === 'text' ? ext.toUpperCase().slice(0, 4) : ext.toUpperCase());
 }
 

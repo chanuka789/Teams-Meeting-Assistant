@@ -15,6 +15,7 @@ import { router as aiRouter } from './lib/routes/ai.js';
 import { router as chatRouter } from './lib/routes/chat.js';
 import { router as voiceRouter } from './lib/routes/voice.js';
 import { backfillDocumentText } from './lib/documents.js';
+import { audioToolAvailable, resumeAudioJobs } from './lib/audio-notes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT) || 3000;
@@ -32,8 +33,11 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/health', (req, res) => {
-  res.json({ ok: status.db === 'ok', db: status.db, storage: `${storageKind}: ${status.storage}`, keyConfigured: Boolean(config.openrouterKey) });
+app.get('/health', async (req, res) => {
+  res.json({
+    ok: status.db === 'ok', db: status.db, storage: `${storageKind}: ${status.storage}`, keyConfigured: Boolean(config.openrouterKey),
+    audio: (await audioToolAvailable()) ? 'ok' : 'ffmpeg missing',
+  });
 });
 
 app.use('/api', express.json({ limit: '10mb' }), loadUser);
@@ -46,7 +50,7 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Readable JSON errors instead of HTML stack traces
 app.use('/api', (err, req, res, next) => { // eslint-disable-line no-unused-vars
-  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'File is too large (max 50 MB).' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'File is too large (max 50 MB, audio 300 MB).' });
   console.error('[api]', req.method, req.path, err.message);
   if (!res.headersSent) res.status(500).json({ error: 'Server error: ' + err.message });
 });
@@ -66,6 +70,7 @@ async function migrateWithRetry() {
       status.db = 'ok';
       console.log(`[db] ready${attempt > 1 ? ` after ${attempt} attempts` : ''}`);
       backfillDocumentText().catch((err) => console.error('[backfill]', describe(err))); // in the background
+      resumeAudioJobs().catch((err) => console.error('[audio]', describe(err)));
       return;
     } catch (err) {
       status.db = `error: ${describe(err)}`;

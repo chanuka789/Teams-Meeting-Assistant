@@ -51,6 +51,9 @@ Open the app. Because no users exist yet, it shows **Set up your app**: enter yo
 | `VOICE_MODEL` | no | `hexgrad/kokoro-82m` | Voice mode: text-to-speech model (users can choose another in Settings) |
 | `VOICE_NAME` | no | `bm_george` | Voice mode: default voice |
 | `VOICE_STT_MODEL` | no | `openai/gpt-transcribe` | Voice mode: speech-to-text for your turns (with RICS word hints) |
+| `KNOWLEDGE_STT_MODEL` | no | `openai/whisper-large-v3` | Audio knowledge files: transcription |
+| `KNOWLEDGE_MODEL` | no | `anthropic/claude-haiku-5.5` | Audio knowledge files: organises the transcript into notes |
+| `RAILPACK_DEPLOY_APT_PACKAGES` | for audio files | `ffmpeg` | Installs ffmpeg on Railway (cuts long recordings) |
 | `VOICE_CHAT_MODEL` | no | `anthropic/claude-haiku-5.5` | Voice mode: fast reply model |
 | `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Speech-to-text |
 | `STT_LANGUAGE` | no | `en` | |
