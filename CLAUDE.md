@@ -39,5 +39,11 @@ APC interview assistant. Browser captures meeting audio (getDisplayMedia system/
 - `OPENROUTER_BASE_URL` can point at a mock server for local tests; `LOCAL_STORAGE_DIR` for local files.
 - `[detect]` logs include a short snippet of speech (temporary, for tuning detection).
 
+## Memory (Railway RAM)
+- Started with `node --max-semi-space-size=2 server.js` directly (railway.json), not `npm start` (npm stays in memory, ~60 MB).
+- PDF / Word / PowerPoint readers are loaded only when such a file is read (`lib/extract.js`; pdf-parse alone ~40 MB).
+- Audio uploads stream to a temp file and on to storage (`saveBodyToTempFile`, `putFileFromPath`); other uploads are read into memory up to 50 MB.
+- Postgres pool: max 5 connections, idle ones closed after 30 s.
+
 ## Deploy
 Railway: `web` service builds with Railpack (config in `railway.json`), `Postgres` service, bucket `documents`. Variables use references (`${{Postgres.DATABASE_URL}}`, `${{documents.BUCKET}}` …). Secrets live in Railway variables.

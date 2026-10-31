@@ -9,7 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node server.js",
+    "start": "node --max-semi-space-size=2 server.js",
     "dev": "node --watch server.js",
     "test": "node --test test/*.test.js",
     "icons": "node scripts/build-icons.mjs"
