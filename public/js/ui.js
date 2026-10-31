@@ -197,6 +197,16 @@ export const timeStr = (d = new Date()) => d.toLocaleTimeString([], { hour: '2-d
 // ---------- searchable select (combobox) ----------
 // items: [{ value, label, sub, group, tags: [{ text, kind }] }]. Type to filter, ↑ ↓ Enter, Esc to close.
 let comboSeq = 0;
+// Phones and tablets: focusing a search box opens the on-screen keyboard, which resizes the page.
+// Dropdowns there open without focusing their search box (tap it to type) and follow resizes instead of closing.
+const isTouch = () => window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+// Height of the part of the screen the keyboard leaves free
+const viewH = () => window.visualViewport?.height || window.innerHeight;
+const offScreen = (el) => {
+  const r = el.getBoundingClientRect();
+  return !el.isConnected || (r.width === 0 && r.height === 0) || r.bottom < 0 || r.top > viewH();
+};
+
 // compact: small trigger showing only the name (for toolbars); the list opens wider than the trigger.
 export function combobox({ items, value, ariaLabel, placeholder = 'Search…', onChange, compact = false }) {
   const id = `cb${++comboSeq}`;
@@ -273,23 +283,34 @@ export function combobox({ items, value, ariaLabel, placeholder = 'Search…', o
     onChange(it.value);
   }
 
-  function openPop() {
-    if (open) return;
-    open = true;
-    pop.hidden = false;
-    trigger.setAttribute('aria-expanded', 'true');
+  // Open above or below, whichever has more room, and keep the list inside the visible screen
+  function placePop() {
+    if (offScreen(trigger)) { close(); return; }
     const r = trigger.getBoundingClientRect();
-    pop.classList.toggle('up', r.bottom + 380 > window.innerHeight && r.top > 380);
+    const below = viewH() - r.bottom;
+    const up = below < 300 && r.top > below;
+    pop.classList.toggle('up', up);
+    list.style.maxHeight = `${Math.max(120, Math.min(300, (up ? r.top : below) - 100))}px`;
     // Compact lists are wider than their trigger: shift them so they stay fully on screen
     if (compact) {
       const width = Math.min(420, window.innerWidth - 32);
       pop.style.width = `${width}px`;
       pop.style.left = `${Math.max(16 - r.left, Math.min(0, window.innerWidth - 16 - r.left - width))}px`;
     }
+  }
+  function openPop() {
+    if (open) return;
+    open = true;
+    pop.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
     search.value = '';
+    placePop();
     renderList();
-    search.focus();
+    if (!isTouch()) search.focus();
     document.addEventListener('mousedown', outside, true);
+    document.addEventListener('touchstart', outside, { capture: true, passive: true });
+    window.addEventListener('resize', placePop);
+    window.visualViewport?.addEventListener('resize', placePop);
   }
   function close() {
     if (!open) return;
@@ -297,6 +318,9 @@ export function combobox({ items, value, ariaLabel, placeholder = 'Search…', o
     pop.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
     document.removeEventListener('mousedown', outside, true);
+    document.removeEventListener('touchstart', outside, { capture: true });
+    window.removeEventListener('resize', placePop);
+    window.visualViewport?.removeEventListener('resize', placePop);
   }
   const outside = (e) => { if (!wrap.contains(e.target)) close(); };
 
@@ -410,13 +434,23 @@ export function enhanceSelect(select) {
   }
 
   function place() {
+    if (!pop) return;
+    if (offScreen(trigger)) { close(); return; } // its button was scrolled away or hidden
     const r = trigger.getBoundingClientRect();
     const w = Math.min(Math.max(r.width, 200), window.innerWidth - 24);
     pop.style.width = `${w}px`;
     pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - 12 - w))}px`;
-    const below = window.innerHeight - r.bottom;
+    // Fit the list into the room above or below the button (smaller while a phone keyboard is open)
+    const vh = viewH();
+    const below = vh - r.bottom - 12;
+    const above = r.top - 12;
+    const list = pop.querySelector('.dd-list');
+    list.style.maxHeight = '';
     const h0 = pop.offsetHeight;
-    if (below < h0 + 12 && r.top > below) { pop.style.top = ''; pop.style.bottom = `${window.innerHeight - r.top + 6}px`; }
+    const up = below < h0 && above > below;
+    const room = (up ? above : below) - 6;
+    if (h0 > room) list.style.maxHeight = `${Math.max(120, room - (pop.offsetHeight - list.offsetHeight))}px`;
+    if (up) { pop.style.top = ''; pop.style.bottom = `${window.innerHeight - r.top + 6}px`; }
     else { pop.style.bottom = ''; pop.style.top = `${r.bottom + 6}px`; }
   }
 
@@ -434,11 +468,13 @@ export function enhanceSelect(select) {
     const keyTarget = search || list;
     keyTarget.addEventListener('keydown', onKey);
     if (search) search.addEventListener('input', () => build(search.value));
-    keyTarget.focus();
+    (isTouch() ? list : keyTarget).focus({ preventScroll: true });
     setTimeout(() => {
       document.addEventListener('mousedown', outside, true);
+      document.addEventListener('touchstart', outside, { capture: true, passive: true });
       window.addEventListener('scroll', onScroll, true);
-      window.addEventListener('resize', close);
+      window.addEventListener('resize', place);
+      window.visualViewport?.addEventListener('resize', place);
     });
   }
 
@@ -448,11 +484,14 @@ export function enhanceSelect(select) {
     pop = null;
     trigger.setAttribute('aria-expanded', 'false');
     document.removeEventListener('mousedown', outside, true);
+    document.removeEventListener('touchstart', outside, { capture: true });
     window.removeEventListener('scroll', onScroll, true);
-    window.removeEventListener('resize', close);
+    window.removeEventListener('resize', place);
+    window.visualViewport?.removeEventListener('resize', place);
   }
   const outside = (e) => { if (!pop?.contains(e.target) && !trigger.contains(e.target)) close(); };
-  const onScroll = (e) => { if (!pop?.contains(e.target)) close(); };
+  // Page scrolls (e.g. the chat following a new message) move the list with its button instead of closing it
+  const onScroll = (e) => { if (!pop?.contains(e.target)) place(); };
 
   function onKey(e) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(items.length - 1, active + 1), true); }

@@ -196,7 +196,9 @@ function trackKeyboard() {
   const html = document.documentElement;
   let fullH = 0;
   let fullW = 0;
-  const typing = () => document.activeElement?.matches?.('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, [contenteditable="true"]');
+  // Searching inside a dropdown is not typing a message: the dropdown must stay where it is
+  const typing = () => document.activeElement?.matches?.('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, [contenteditable="true"]')
+    && !document.activeElement.closest('.dd-pop, .combo-pop');
   const update = () => {
     if (window.innerWidth !== fullW) { fullW = window.innerWidth; fullH = 0; } // rotation: measure again
     fullH = Math.max(fullH, window.innerHeight, vv.height);
