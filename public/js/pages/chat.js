@@ -134,7 +134,7 @@ export async function renderChat(page, params) {
       drawThinking();
     } catch {
       modelSlot.replaceWith(h('span', { class: 'subtle small' }, 'Models unavailable'));
-      thinking.hidden = true;
+      (thinking.closest('.dd') || thinking).hidden = true;
     }
   })();
   api('GET', '/api/competencies').then((comps) => {

@@ -1,6 +1,6 @@
 // App entry: sign-in / first-time setup, app shell (sidebar + pages) and hash routing
 
-import { h, icon, button, segmented, initials, toast } from './ui.js';
+import { h, icon, button, segmented, initials, toast, autoEnhanceSelects } from './ui.js';
 import { api, setUnauthorizedHandler } from './api.js';
 import { session, pref, setPrefs, applyTheme, flushPrefs, onPrefsChange } from './state.js';
 import { renderAuth } from './pages/auth.js';
@@ -188,6 +188,7 @@ async function showSignedIn() {
 }
 
 async function boot() {
+  autoEnhanceSelects(); // every <select class="select"> becomes the app-styled dropdown
   setUnauthorizedHandler(() => {
     if (session.me) { toast('Your session ended. Please sign in again.', 'info'); setTimeout(() => location.reload(), 1200); }
   });

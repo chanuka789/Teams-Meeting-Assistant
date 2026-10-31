@@ -76,7 +76,7 @@ export function createLivePage({ onListeningChange }) {
     button('Ask', { icon: 'send', variant: 'primary', type: 'submit' }));
   const styleSel = h('select', { class: 'select select-sm', 'aria-label': 'Answer style', title: 'Answer style (applies to the next answer)',
     onchange: () => setPrefs({ answerStyle: styleSel.value }) },
-  ANSWER_STYLES.map((x) => h('option', { value: x.id, selected: x.id === pref('answerStyle'), title: `${x.label}: ${x.hint}` }, x.short)));
+  ANSWER_STYLES.map((x) => h('option', { value: x.id, selected: x.id === pref('answerStyle'), title: `${x.label}: ${x.hint}`, 'data-hint': x.hint }, x.short)));
   const answerSize = sizeStepper(pref('answerSize'), { min: 12, max: 36, label: 'answer', onChange: (v) => setPrefs({ answerSize: v }) });
 
   // Answer model and thinking level, changeable during the interview (same settings as the Settings page)

@@ -318,3 +318,170 @@ export function combobox({ items, value, ariaLabel, placeholder = 'Search…', o
   wrap.setItems = (next) => { items = next; renderValue(); };
   return wrap;
 }
+
+// ---------- dropdown: replaces native <select class="select"> with an app-styled listbox ----------
+// The native select stays (hidden) as the source of truth, so code that sets .value, swaps options,
+// toggles .disabled / .hidden or listens for 'change' keeps working. Long lists get a search box.
+const SELECT_VALUE = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+let ddSeq = 0;
+
+export function enhanceSelect(select) {
+  if (select.dataset.enhanced) return;
+  select.dataset.enhanced = '1';
+  const id = `dd${++ddSeq}`;
+  const valueEl = h('span', { class: 'dd-value' });
+  const trigger = h('button', { type: 'button', class: 'dd-trigger', id: `${id}-btn`, 'aria-haspopup': 'listbox', 'aria-expanded': 'false' }, valueEl, icon('chevron-down'));
+  const wrap = h('div', { class: `dd${select.classList.contains('select-sm') ? ' dd-sm' : ''}` });
+  for (const k of ['width', 'maxWidth', 'minWidth', 'flex']) if (select.style[k]) wrap.style[k] = select.style[k];
+  select.replaceWith(wrap);
+  wrap.append(trigger, select);
+  select.hidden = true;
+  select.tabIndex = -1;
+
+  // Accessible name: the select's aria-label, or its <label for="…">, which now points to the button
+  const label = select.id && document.querySelector(`label[for="${CSS.escape(select.id)}"]`);
+  if (label) { label.htmlFor = trigger.id; label.id ||= `${id}-label`; trigger.setAttribute('aria-labelledby', `${label.id} ${trigger.id}`); }
+  else if (select.getAttribute('aria-label')) trigger.setAttribute('aria-label', select.getAttribute('aria-label'));
+  if (select.title) trigger.title = select.title;
+
+  const render = () => {
+    const opt = select.options[select.selectedIndex];
+    valueEl.textContent = opt ? opt.textContent : '';
+    trigger.disabled = select.disabled;
+  };
+  // Mirror programmatic changes: value, options, disabled
+  Object.defineProperty(select, 'value', {
+    configurable: true,
+    get() { return SELECT_VALUE.get.call(this); },
+    set(v) { SELECT_VALUE.set.call(this, v); render(); },
+  });
+  new MutationObserver(render).observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'selected'] });
+  render();
+
+  // ----- popup -----
+  let pop = null;
+  let items = [];
+  let active = -1;
+  let typed = '';
+  let typedTimer;
+  const options = () => [...select.querySelectorAll('option')];
+
+  function build(filter = '') {
+    const list = pop.querySelector('.dd-list');
+    const f = filter.trim().toLowerCase();
+    const nodes = [];
+    items = [];
+    let lastGroup = null;
+    for (const o of options()) {
+      if (f && !o.textContent.toLowerCase().includes(f)) continue;
+      const group = o.parentElement.tagName === 'OPTGROUP' ? o.parentElement.label : null;
+      if (group !== lastGroup) { lastGroup = group; if (group) nodes.push(h('div', { class: 'dd-group', role: 'presentation' }, group)); }
+      const i = items.length;
+      items.push(o);
+      nodes.push(h('div', {
+        class: 'dd-opt', role: 'option', id: `${id}-o${i}`, 'aria-selected': String(o.selected), 'aria-disabled': o.disabled ? 'true' : undefined,
+        onmousedown: (e) => { e.preventDefault(); choose(i); }, onmousemove: () => setActive(i, false),
+      }, h('span', { class: 'dd-check' }, o.selected ? icon('check') : null),
+      h('span', { class: 'dd-text' }, h('span', {}, o.textContent), o.dataset.hint && h('span', { class: 'dd-hint' }, o.dataset.hint))));
+    }
+    if (!items.length) nodes.push(h('div', { class: 'dd-empty' }, 'No matches'));
+    list.replaceChildren(...nodes);
+    setActive(Math.max(0, items.findIndex((o) => o.selected)), true);
+  }
+
+  function setActive(i, scroll) {
+    active = i;
+    pop.querySelectorAll('.dd-opt').forEach((el, k) => el.classList.toggle('active', k === i));
+    const el = pop.querySelector(`#${id}-o${i}`);
+    if (el) {
+      pop.querySelector('.dd-list').setAttribute('aria-activedescendant', el.id);
+      if (scroll) el.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function choose(i) {
+    const o = items[i];
+    if (!o || o.disabled) return;
+    const changed = select.value !== o.value;
+    select.value = o.value;
+    close();
+    trigger.focus();
+    if (changed) select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function place() {
+    const r = trigger.getBoundingClientRect();
+    const w = Math.min(Math.max(r.width, 200), window.innerWidth - 24);
+    pop.style.width = `${w}px`;
+    pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - 12 - w))}px`;
+    const below = window.innerHeight - r.bottom;
+    const h0 = pop.offsetHeight;
+    if (below < h0 + 12 && r.top > below) { pop.style.top = ''; pop.style.bottom = `${window.innerHeight - r.top + 6}px`; }
+    else { pop.style.bottom = ''; pop.style.top = `${r.bottom + 6}px`; }
+  }
+
+  function open() {
+    if (pop || trigger.disabled) return;
+    const many = options().length > 10;
+    const search = many && h('input', { class: 'input', type: 'search', placeholder: 'Search…', 'aria-label': 'Search options', autocomplete: 'off' });
+    const list = h('div', { class: 'dd-list', role: 'listbox', tabindex: '-1', 'aria-labelledby': trigger.getAttribute('aria-labelledby') || undefined, 'aria-label': trigger.getAttribute('aria-label') || undefined });
+    pop = h('div', { class: 'dd-pop' }, search && h('div', { class: 'input-icon' }, icon('search'), search), list);
+    // Inside a modal dialog the popup must live in the dialog (top layer), elsewhere in <body>
+    (trigger.closest('dialog') || document.body).append(pop);
+    build();
+    place();
+    trigger.setAttribute('aria-expanded', 'true');
+    const keyTarget = search || list;
+    keyTarget.addEventListener('keydown', onKey);
+    if (search) search.addEventListener('input', () => build(search.value));
+    keyTarget.focus();
+    setTimeout(() => {
+      document.addEventListener('mousedown', outside, true);
+      window.addEventListener('scroll', onScroll, true);
+      window.addEventListener('resize', close);
+    });
+  }
+
+  function close() {
+    if (!pop) return;
+    pop.remove();
+    pop = null;
+    trigger.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', outside, true);
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', close);
+  }
+  const outside = (e) => { if (!pop?.contains(e.target) && !trigger.contains(e.target)) close(); };
+  const onScroll = (e) => { if (!pop?.contains(e.target)) close(); };
+
+  function onKey(e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(Math.min(items.length - 1, active + 1), true); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(Math.max(0, active - 1), true); }
+    else if (e.key === 'Home') { e.preventDefault(); setActive(0, true); }
+    else if (e.key === 'End') { e.preventDefault(); setActive(items.length - 1, true); }
+    else if (e.key === 'Enter' || (e.key === ' ' && e.target.tagName !== 'INPUT')) { e.preventDefault(); choose(active); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); trigger.focus(); }
+    else if (e.key === 'Tab') close();
+    else if (e.key.length === 1 && e.target.tagName !== 'INPUT') {
+      // Type to jump to an option
+      clearTimeout(typedTimer);
+      typed += e.key.toLowerCase();
+      typedTimer = setTimeout(() => { typed = ''; }, 600);
+      const i = items.findIndex((o) => o.textContent.toLowerCase().replace(/^\w+:\s*/, '').startsWith(typed) || o.textContent.toLowerCase().startsWith(typed));
+      if (i >= 0) setActive(i, true);
+    }
+  }
+
+  trigger.addEventListener('click', () => (pop ? close() : open()));
+  trigger.addEventListener('keydown', (e) => {
+    if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); open(); }
+  });
+  return wrap;
+}
+
+// Upgrade every native select (now and when pages add them)
+export function autoEnhanceSelects() {
+  const run = () => document.querySelectorAll('select.select:not([data-enhanced])').forEach(enhanceSelect);
+  run();
+  new MutationObserver(run).observe(document.body, { childList: true, subtree: true });
+}
