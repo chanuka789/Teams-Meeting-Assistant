@@ -4,7 +4,7 @@ import { api } from './api.js';
 
 export const session = { me: null, models: null };
 
-export const DEFAULT_PREFS = { autoAnswer: true, theme: 'system', answerSize: 17, transcriptSize: 14, overlaySize: 22, answerStyle: 'balanced' };
+export const DEFAULT_PREFS = { autoAnswer: true, useDecisions: true, theme: 'system', answerSize: 17, transcriptSize: 14, overlaySize: 22, answerStyle: 'balanced' };
 
 // Empty string means "use the default"
 export const pref = (k) => { const v = session.me?.prefs?.[k]; return v === undefined || v === null || v === '' ? DEFAULT_PREFS[k] : v; };

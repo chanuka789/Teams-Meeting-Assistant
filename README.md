@@ -15,7 +15,7 @@ A web app for RICS APC final interviews (Quantity surveying and construction pat
 | Chat | everyone | Study chat with saved, searchable conversations. Answers use the library and your case study and cite them ([1], [2]); click a citation or source to open the document beside the chat, scrolled to the passage and highlighted (a list when several places were used). Choose model, thinking, which documents to search and answer length; stop (Esc), regenerate, copy, export. Pin chats, rename from the title, edit and resend your question, and pick one of three suggested follow-up questions. Shortcuts: Ctrl/⌘+Shift+O new chat, Ctrl/⌘+K search chats. The cost of each reply is shown in small text under it |
 | Competency library | everyone reads, admins upload | Documents organised by the 19 QS&C competencies (11 mandatory, 6 core, optional list) plus General RICS guidance; admins can edit the list |
 | My case study | each user | Private case study documents (report, slides with speaker notes, figures); nobody else can open them |
-| Settings | each user | Profile and notes, theme, text sizes, AI models with prices, usage and cost (Live answers and Chat shown separately), password |
+| Settings | each user | Profile and notes, theme, text sizes, AI models with prices, fast decisions with Jev 1.14 (question detection, search routing; on by default), usage and cost (Live answers and Chat shown separately), password |
 | Users | admins | Add users, reset passwords, change roles, see spend per user |
 
 Supported files: PDF, Word (.docx), PowerPoint (.pptx, including speaker notes), TXT, Markdown, CSV, up to 50 MB. Old .doc / .ppt must be saved as .docx / .pptx first. Scanned PDFs need OCR.
@@ -46,7 +46,8 @@ Open the app. Because no users exist yet, it shows **Set up your app**: enter yo
 | `APP_PASSWORD` | recommended | – | Setup key for creating the first admin |
 | `ANSWER_MODEL` | no | `anthropic/claude-sonnet-5.5` | Default; each user can choose in Settings |
 | `ANSWER_REASONING` | no | `low` | Default thinking level |
-| `DETECT_MODEL` | no | `anthropic/claude-haiku-5.5` | Question detection (thinking off) |
+| `DETECT_MODEL` | no | `anthropic/claude-haiku-5.5` | Question detection (thinking off); with fast decisions on, only tidies detected questions |
+| `DECISION_MODEL` | no | `typesafe/jev-1.14` | Fast decisions (OpenRouter Decisions API): is it a question, competency and source for the search. Empty turns it off |
 | `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Speech-to-text |
 | `STT_LANGUAGE` | no | `en` | |
 

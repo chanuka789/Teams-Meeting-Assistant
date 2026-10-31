@@ -130,6 +130,18 @@ function appearanceSection() {
 }
 
 // ---------- AI models ----------
+// Decision model (Jev): fast yes/no and routing choices, on by default
+function decisionsField(model) {
+  const name = model ? model.split('/').pop().replace(/^jev-/, 'Jev ') : '';
+  if (!model) return h('div', { class: 'callout' }, icon('info'), h('div', {}, 'Fast decisions are turned off on the server (DECISION_MODEL is empty).'));
+  return h('div', { class: 'decisions-box' },
+    switchEl(`Fast decisions with ${name}`, pref('useDecisions') !== false, (v) => { setPrefs({ useDecisions: v }); toast(v ? 'Fast decisions on' : 'Fast decisions off'); }),
+    h('ul', { class: 'hint decisions-list' },
+      h('li', {}, 'Live: decides in about 0.1 s whether speech is a question. The detection model above is then used only to tidy a question that needs it.'),
+      h('li', {}, 'Live and Chat: picks the likely competency, and case study or library, so the search finds better passages.'),
+      h('li', {}, 'Chat: skips the document search for messages like "thanks" or "shorter please".')),
+    h('div', { class: 'hint' }, `Model: ${model} (OpenRouter Decisions API). Costs are counted in Question detection, Live answers and Chat. If it fails, the app works as before.`));
+}
 function modelsSection() {
   const body = h('div', { class: 'stack', style: { gap: '20px' } }, h('div', { class: 'skeleton', style: { height: '40px' } }), h('div', { class: 'skeleton', style: { height: '40px' } }));
   const auto = switchEl('Answer detected questions automatically', pref('autoAnswer'), (v) => setPrefs({ autoAnswer: v }));
@@ -188,8 +200,11 @@ function modelsSection() {
       labelled('Answer model', answer, `${data.answer.length} chat models. Writes the answers: stronger models are more accurate but slower.`),
       h('div', { class: 'grid-2' },
         field('Thinking level', reasoningSel, 'Higher is more careful but slower.'),
-        labelled('Question detection model', detect, 'Decides if speech is a question. Fast and cheap is best.')),
+        labelled('Question detection model', detect, pref('useDecisions') !== false && d.decisionModel
+          ? 'Tidies questions found by fast decisions (below). Decides on its own if those are off. Fast and cheap is best.'
+          : 'Decides if speech is a question. Fast and cheap is best.')),
       labelled('Speech-to-text model', stt, `${data.stt.length} models. English only.`),
+      decisionsField(d.decisionModel),
       h('hr', { class: 'divider' }),
       h('div', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'label' }, 'Chat page'),
         h('span', { class: 'hint' }, 'The Chat page has its own model and thinking level, separate from the Live interview answers.')),

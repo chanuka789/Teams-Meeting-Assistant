@@ -995,3 +995,7 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
   .kb-open .chat-welcome > .logo, .kb-open .chat-welcome > p { display: none; }
   .kb-open .composer-hint { display: none; }
 }
+
+/* Settings: fast decisions (Jev) */
+.decisions-box { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.decisions-list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 2px; }
