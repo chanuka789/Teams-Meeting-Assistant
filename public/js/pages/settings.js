@@ -1,11 +1,11 @@
 // Settings: profile and notes, appearance (theme + text sizes), AI models, usage and password
 
-import { reasoningChoices, formatUsd } from '../../models.js';
+import { reasoningChoices, formatUsd, englishFirst } from '../../models.js';
 import { h, icon, button, toast, field, segmented, switchEl, combobox } from '../ui.js';
 import { ANSWER_STYLES } from '../format.js';
 import { chatItems, sttItems, REASONING_LABELS, reasoningSelection, fillThinkingSelect } from '../model-items.js';
 import { api } from '../api.js';
-import { session, pref, setPrefs, applyTheme, loadModels } from '../state.js';
+import { session, pref, setPrefs, applyTheme, loadModels, flushPrefs } from '../state.js';
 
 const SECTIONS = [
   { id: 'profile', label: 'Profile', short: 'Profile', icon: 'user-round' },
@@ -130,6 +130,58 @@ function appearanceSection() {
 }
 
 // ---------- AI models ----------
+// Voice mode (Chat page): the voice that reads replies aloud, and how turns work
+function voiceField() {
+  const box = h('div', { class: 'stack', style: { gap: '14px' } },
+    h('div', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'label' }, 'Voice mode (Chat page)'),
+      h('span', { class: 'hint' }, 'Talk with the AI hands-free. Your speech uses the speech-to-text model above; replies are read aloud with this voice.')),
+    h('div', { class: 'skeleton', style: { height: '40px' } }));
+  const interrupt = switchEl('Interrupt the AI by speaking', pref('voiceInterrupt') !== false, (v) => setPrefs({ voiceInterrupt: v }));
+  const autoSend = switchEl('Send what I say automatically', pref('voiceAutoSend') !== false, (v) => setPrefs({ voiceAutoSend: v }));
+  api('GET', '/api/voices').then((data) => {
+    const models = data.models.filter((m) => m.perChar > 0 || m.price === 'Free');
+    const voiceSel = h('select', { class: 'select', 'aria-label': 'Voice', onchange: () => { setPrefs({ voiceName: voiceSel.value }); toast('Voice saved'); } });
+    let model = data.current.model;
+    const fillVoices = (selected) => {
+      const voices = englishFirst(models.find((m) => m.id === model)?.voices || []);
+      voiceSel.disabled = !voices.length;
+      voiceSel.replaceChildren(...(voices.length ? voices.map((v) => h('option', { value: v, selected: v === selected }, v)) : [h('option', { value: '' }, 'Default voice')]));
+      if (voices.length && !voices.includes(selected)) voiceSel.value = voices[0];
+    };
+    const picker = combobox({
+      items: models.map((m) => ({ value: m.id, label: m.name, sub: m.price, group: m.id.split('/')[0], tags: m.id === data.defaults.voiceModel ? [{ text: 'Default', kind: 'accent' }] : [] })),
+      value: model, ariaLabel: 'Voice model', placeholder: 'Search voice models…',
+      onChange: (v) => {
+        model = v;
+        fillVoices(v === data.defaults.voiceModel ? data.defaults.voiceName : '');
+        setPrefs({ voiceModel: v, voiceName: voiceSel.value });
+        toast('Voice model saved');
+      },
+    });
+    fillVoices(data.current.voice);
+    const test = button('Test voice', { icon: 'volume-2', size: 'sm', onClick: async () => {
+      test.disabled = true;
+      await flushPrefs(); // the server reads the voice from the saved settings
+      try {
+        const r = await fetch('/api/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+          body: JSON.stringify({ text: 'Hello. I will read your answers aloud in voice mode, for example: NRM 2 sets the rules for detailed measurement.' }) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Voice test failed');
+        const url = URL.createObjectURL(await r.blob());
+        const a = new Audio(url);
+        a.onended = () => URL.revokeObjectURL(url);
+        await a.play();
+      } catch (e) { toast(e.message, 'error'); } finally { test.disabled = false; }
+    } });
+    box.lastChild.replaceWith(h('div', { class: 'stack', style: { gap: '14px' } },
+      h('div', { class: 'grid-2' },
+        h('div', { class: 'field' }, h('span', { class: 'label' }, 'Voice model'), picker, h('div', { class: 'hint' }, `${models.length} voice models. Cheaper voices sound more robotic.`)),
+        h('div', { class: 'field' }, h('span', { class: 'label' }, 'Voice'), voiceSel, h('div', { class: 'row', style: { marginTop: '6px' } }, test))),
+      h('div', { class: 'grid-2' }, interrupt, autoSend),
+      h('div', { class: 'hint' }, 'Interrupting works best with headphones: then the microphone cannot hear the AI. With "Send automatically" off, you check the text before it is sent.')));
+  }).catch((e) => box.lastChild.replaceWith(h('div', { class: 'callout warn' }, icon('triangle-alert'), h('div', {}, e.message))));
+  return box;
+}
+
 // Decision model (Jev): fast yes/no and routing choices, on by default
 function decisionsField(model) {
   const name = model ? model.split('/').pop().replace(/^jev-/, 'Jev ') : '';
@@ -205,6 +257,8 @@ function modelsSection() {
           : 'Decides if speech is a question. Fast and cheap is best.')),
       labelled('Speech-to-text model', stt, `${data.stt.length} models. English only.`),
       decisionsField(d.decisionModel),
+      h('hr', { class: 'divider' }),
+      voiceField(),
       h('hr', { class: 'divider' }),
       h('div', { class: 'stack', style: { gap: '4px' } }, h('span', { class: 'label' }, 'Chat page'),
         h('span', { class: 'hint' }, 'The Chat page has its own model and thinking level, separate from the Live interview answers.')),

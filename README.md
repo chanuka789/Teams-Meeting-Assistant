@@ -12,7 +12,7 @@ A web app for RICS APC final interviews (Quantity surveying and construction pat
 | Page | Who | What |
 |---|---|---|
 | Live interview | everyone | Start/stop listening, live transcript, answer cards with sources, type a question, text size controls, compact **model / thinking / answer style** dropdowns above the answers, **Float answers**: an always-on-top window (Chrome/Edge) that shows the latest answer like a subtitle and can be dragged over the Teams window |
-| Chat | everyone | Study chat with saved, searchable conversations. Answers use the library and your case study and cite them ([1], [2]); click a citation or source to open the document beside the chat, scrolled to the passage and highlighted (a list when several places were used). Choose model, thinking, which documents to search and answer length; stop (Esc), regenerate, copy, export. Pin chats, rename from the title, edit and resend your question, and pick one of three suggested follow-up questions. Shortcuts: Ctrl/⌘+Shift+O new chat, Ctrl/⌘+K search chats. The cost of each reply is shown in small text under it |
+| Chat | everyone | Study chat with saved, searchable conversations. Answers use the library and your case study and cite them ([1], [2]); click a citation or source to open the document beside the chat, scrolled to the passage and highlighted (a list when several places were used). Choose model, thinking, which documents to search and answer length; stop (Esc), regenerate, copy, export. Pin chats, rename from the title, edit and resend your question, and pick one of three suggested follow-up questions. Shortcuts: Ctrl/⌘+Shift+O new chat, Ctrl/⌘+K search chats. The cost of each reply is shown in small text under it  **Voice mode**: talk and listen hands-free (speech-to-text, replies read aloud sentence by sentence, interrupt by speaking). **Mock interview**: an AI assessor asks one question at a time, gives feedback and results, in voice or text |
 | Competency library | everyone reads, admins upload | Documents organised by the 19 QS&C competencies (11 mandatory, 6 core, optional list) plus General RICS guidance; admins can edit the list |
 | My case study | each user | Private case study documents (report, slides with speaker notes, figures); nobody else can open them |
 | Settings | each user | Profile and notes, theme, text sizes, AI models with prices, fast decisions with Jev 1.14 (question detection, search routing; on by default), usage and cost (Live answers and Chat shown separately), password |
@@ -48,6 +48,8 @@ Open the app. Because no users exist yet, it shows **Set up your app**: enter yo
 | `ANSWER_REASONING` | no | `low` | Default thinking level |
 | `DETECT_MODEL` | no | `anthropic/claude-haiku-5.5` | Question detection (thinking off); with fast decisions on, only tidies detected questions |
 | `DECISION_MODEL` | no | `typesafe/jev-1.14` | Fast decisions (OpenRouter Decisions API): is it a question, competency and source for the search. Empty turns it off |
+| `VOICE_MODEL` | no | `hexgrad/kokoro-82m` | Voice mode: text-to-speech model (users can choose another in Settings) |
+| `VOICE_NAME` | no | `bm_george` | Voice mode: default voice |
 | `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Speech-to-text |
 | `STT_LANGUAGE` | no | `en` | |
 

@@ -13,6 +13,7 @@ import { router as accountRouter } from './lib/routes/account.js';
 import { router as libraryRouter } from './lib/routes/library.js';
 import { router as aiRouter } from './lib/routes/ai.js';
 import { router as chatRouter } from './lib/routes/chat.js';
+import { router as voiceRouter } from './lib/routes/voice.js';
 import { backfillDocumentText } from './lib/documents.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,7 @@ app.use('/api', accountRouter);
 app.use('/api', libraryRouter);
 app.use('/api', aiRouter);
 app.use('/api', chatRouter);
+app.use('/api', voiceRouter);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Readable JSON errors instead of HTML stack traces

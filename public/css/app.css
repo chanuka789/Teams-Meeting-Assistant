@@ -897,11 +897,21 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
   .chat-head .chat-tools .combo-compact .combo-trigger { max-width: 180px; }
   .chat-head .chat-tools .dd-sm { max-width: 200px; }
 }
-/* Narrower: settings wrap to their own row under the title */
-@container chat (max-width: 900px) {
+/* Narrower: settings wrap to their own row under the title (the title keeps room to be read).
+   Measured on the conversation column itself, so an open chat list or document viewer counts. */
+.chat-main { container: chatmain / inline-size; }
+.chat-head h1 { min-width: 140px; }
+@container chatmain (max-width: 1040px) {
   .chat-head .chat-tools { order: 99; flex-basis: 100%; margin: 2px -8px -4px; padding: 6px 8px; border-top: 1px solid var(--border); }
   .chat-head .chat-tools-inner { flex-wrap: wrap; gap: 6px; }
 }
+/* A mock interview also shows its badge in the header, so it needs a little more room */
+@container chatmain (max-width: 1180px) {
+  .chat-head:has(.mock-badge:not([hidden])) .chat-tools { order: 99; flex-basis: 100%; margin: 2px -8px -4px; padding: 6px 8px; border-top: 1px solid var(--border); }
+  .chat-head:has(.mock-badge:not([hidden])) .chat-tools-inner { flex-wrap: wrap; gap: 6px; }
+}
+@container chatmain (max-width: 520px) { .mock-badge { display: none !important; } }
+.voice-bar { text-align: left; }
 @container chat (max-width: 640px) {
   .chat-head .chat-tools-inner { display: grid; }
 }
@@ -999,3 +1009,60 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
 /* Settings: fast decisions (Jev) */
 .decisions-box { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
 .decisions-list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 2px; }
+
+/* ---------- Voice mode ---------- */
+.composer-actions { gap: 4px; align-items: center; }
+.voice-btn { width: 36px; height: 36px; border-radius: 50%; padding: 0; color: var(--text-2); }
+.voice-btn[aria-pressed="true"] { color: var(--primary); background: var(--accent-soft); }
+.composer-wrap.voice-on .composer { display: none; }
+.voice-bar { max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: var(--s-3); padding: 10px 12px; background: var(--surface); border: 1px solid var(--primary); border-radius: var(--r-xl); box-shadow: var(--shadow-md); }
+.voice-bar[hidden] { display: none; }
+.voice-orb { flex: none; width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; gap: 3px; }
+.voice-orb span { width: 4px; height: 22px; border-radius: 2px; background: var(--primary); transform: scaleY(.18); transition: transform .08s linear; }
+.voice-orb.speech { background: color-mix(in srgb, var(--primary) 22%, transparent); }
+[data-voice="speaking"] .voice-orb span { animation: voice-talk 1s ease-in-out infinite; }
+[data-voice="speaking"] .voice-orb span:nth-child(2) { animation-delay: .15s; }
+[data-voice="speaking"] .voice-orb span:nth-child(3) { animation-delay: .3s; }
+[data-voice="speaking"] .voice-orb span:nth-child(4) { animation-delay: .45s; }
+[data-voice="speaking"] .voice-orb span:nth-child(5) { animation-delay: .6s; }
+@keyframes voice-talk { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(.9); } }
+[data-voice="thinking"] .voice-orb, [data-voice="transcribing"] .voice-orb { animation: voice-pulse 1.2s ease-in-out infinite; }
+@keyframes voice-pulse { 50% { opacity: .55; } }
+[data-voice="paused"] .voice-orb { background: var(--surface-2); }
+[data-voice="paused"] .voice-orb span { background: var(--text-3); }
+.voice-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.voice-status { font-size: var(--t-sm); font-weight: 600; color: var(--text); }
+.voice-heard { font-size: var(--t-sm); color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.voice-heard:empty { display: none; }
+.voice-actions { flex: none; display: flex; align-items: center; gap: 4px; }
+.voice-actions .btn[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .voice-orb span, .voice-orb { animation: none !important; transition: none; } }
+@media (max-width: 640px) {
+  .voice-bar { flex-wrap: wrap; gap: var(--s-2); padding: 8px 10px; }
+  .voice-orb { width: 38px; height: 38px; }
+  .voice-info { flex-basis: calc(100% - 50px); }
+  .voice-actions { flex-basis: 100%; justify-content: flex-end; }
+}
+
+/* ---------- Mock interview ---------- */
+.mock-badge { flex: none; }
+.mock-badge[hidden] { display: none; }
+.mock-end { display: flex; margin: 0 auto 8px; }
+.mock-end[hidden] { display: none; }
+.composer-wrap.voice-on .mock-end { margin-bottom: 8px; }
+.mock-card { display: flex; align-items: center; gap: var(--s-4); width: 100%; max-width: 680px; margin: var(--s-4) auto 0; padding: var(--s-4); text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
+.mock-card-icon { flex: none; width: 40px; height: 40px; border-radius: var(--r-md); display: grid; place-items: center; background: var(--accent-soft); color: var(--primary); }
+.mock-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mock-card-text span { font-size: var(--t-sm); color: var(--text-2); }
+.mock-card-actions { flex: none; display: flex; gap: var(--s-2); }
+@media (max-width: 640px) {
+  .mock-card { flex-wrap: wrap; gap: var(--s-3); }
+  .mock-card-text { flex-basis: calc(100% - 56px); }
+  .mock-card-actions { flex-basis: 100%; }
+  .mock-card-actions .btn { flex: 1; justify-content: center; }
+  .kb-open .mock-card { display: none; }
+}
+.chat-item a .mock-icon { flex: none; display: inline-flex; color: var(--primary); margin-right: 6px; }
+.chat-item a .mock-icon .icon { width: 14px; height: 14px; }
+.chat-item > a:has(.mock-icon) { display: flex; align-items: center; }
+.chat-item > a span.mock-icon { display: inline-flex; overflow: visible; }

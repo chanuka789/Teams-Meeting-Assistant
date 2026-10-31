@@ -81,12 +81,13 @@ export class SpeechSegmenter {
     minThreshold = 0.006,
     noiseFactor = 2.8,
     startFrames = 3,          // ~60 ms of loud audio to start
+    startWindow = 0,          // >0: start when startFrames of the last startWindow frames are loud (gaps allowed)
     silenceMs = 650,          // pause length that ends a segment
     maxSegmentMs = 14000,     // force a cut on long monologues
     minSpeechMs = 350,        // ignore clicks / coughs
     preRollMs = 300,
   }) {
-    Object.assign(this, { sampleRate, frameMs, onSegment, onLevel, minThreshold, noiseFactor, startFrames });
+    Object.assign(this, { sampleRate, frameMs, onSegment, onLevel, minThreshold, noiseFactor, startFrames, startWindow });
     this.silenceFrames = Math.round(silenceMs / frameMs);
     this.maxFrames = Math.round(maxSegmentMs / frameMs);
     this.minSpeechFrames = Math.round(minSpeechMs / frameMs);
@@ -100,6 +101,7 @@ export class SpeechSegmenter {
     this.frames = [];
     this.preRoll = [];
     this.loudRun = 0;
+    this.recent = [];
     this.quietRun = 0;
     this.speechFrames = 0;
   }
@@ -120,11 +122,19 @@ export class SpeechSegmenter {
       this.preRoll.push(frame);
       if (this.preRoll.length > this.preRollFrames) this.preRoll.shift();
       this.loudRun = loud ? this.loudRun + 1 : 0;
-      if (this.loudRun >= this.startFrames) {
+      // Optional window: speech dips between syllables, so count loud frames in the last startWindow frames
+      let started = this.loudRun >= this.startFrames;
+      if (this.startWindow > 0) {
+        this.recent.push(loud);
+        if (this.recent.length > this.startWindow) this.recent.shift();
+        started = this.recent.filter(Boolean).length >= this.startFrames;
+      }
+      if (started) {
         this.inSpeech = true;
         this.frames = [...this.preRoll];
         this.preRoll = [];
-        this.speechFrames = this.loudRun;
+        this.speechFrames = Math.max(this.loudRun, this.recent.filter(Boolean).length);
+        this.recent = [];
         this.quietRun = 0;
       }
       return;

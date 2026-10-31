@@ -49,6 +49,30 @@ export function toSttModels(raw) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Text-to-speech models: priced per character of input text (per-second models report pricing.completion)
+export function toTtsModels(raw) {
+  return raw
+    .map((m) => {
+      const perChar = Number(m.pricing?.prompt) || 0;
+      const perSecond = !perChar ? Number(m.pricing?.completion) || 0 : 0;
+      return {
+        id: m.id,
+        name: m.name || m.id,
+        perChar,
+        price: perChar ? `$${+(perChar * 1e6).toFixed(2)} per 1M characters`
+          : perSecond ? `$${+(perSecond * 60).toFixed(4)} per minute of audio` : 'Free',
+        voices: Array.isArray(m.supported_voices) ? m.supported_voices.map(String) : [],
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// English voices first, in a stable order (voice ids show their language in different ways per provider)
+export function englishFirst(voices) {
+  const en = (v) => /^(en[-_]|[ab][fm]_)|[-_]en$|^aura-2-.*-en$/i.test(v) || !/^[a-z]{2}[-_]/i.test(v);
+  return [...voices.filter(en), ...voices.filter((v) => !en(v))];
+}
+
 // The answer stream ends with COST_MARK + {"cost": <USD or null>, "sources": [{name, scope}]}.
 export const COST_MARK = '\u001e';
 

@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { pref, setPrefs, loadModels, session } from '../state.js';
 import { parseMarkdown, citedNumbers } from '../markdown.js';
 import { chatItems, fillThinkingSelect } from '../model-items.js';
+import { startVoice } from '../voice.js';
 
 const STARTERS = [
   { icon: 'book-open', title: 'Quiz me on a competency', text: 'One question at a time, with feedback', prompt: 'Quiz me on Contract practice at Level 3. Ask one question at a time and give feedback with a model answer after each of my replies.' },
@@ -29,8 +30,8 @@ function dayGroup(iso) {
 
 export async function renderChat(page, params) {
   const st = {
-    chats: [], chatId: Number(params[0]) || null, title: 'New chat', messages: [],
-    streaming: null, models: null, docCache: new Map(), viewer: null,
+    chats: [], chatId: Number(params[0]) || null, title: 'New chat', messages: [], mode: 'chat',
+    streaming: null, models: null, docCache: new Map(), viewer: null, voice: null,
   };
   page.style.setProperty('--chat-size', `${pref('chatSize') || 14}px`);
 
@@ -57,10 +58,11 @@ export async function renderChat(page, params) {
   // Phones and tablets: the app menu button lives in this header (the app's own top bar is hidden on Chat)
   const appMenu = button('', { icon: 'menu', variant: 'ghost', size: 'sm', ariaLabel: 'Open menu', onClick: () => document.querySelector('.app')?.classList.add('nav-open') });
   appMenu.classList.add('mobile-menu');
+  const mockBadge = h('span', { class: 'badge badge-accent mock-badge', hidden: true }, icon('graduation-cap'), 'Mock interview');
   const head = h('header', { class: 'chat-head' },
     appMenu,
     button('', { icon: 'panel-left', variant: 'ghost', size: 'sm', ariaLabel: 'Show or hide chat list', onClick: () => setListOpen(layout.classList.contains('list-closed')) }),
-    titleEl, sizer, exportBtn,
+    titleEl, mockBadge, sizer, exportBtn,
     button('', { icon: 'plus', variant: 'ghost', size: 'sm', ariaLabel: 'New chat (Ctrl+Shift+O)', onClick: () => newChat() }));
 
   const inner = h('div', { class: 'thread-inner', 'aria-live': 'polite' });
@@ -93,10 +95,38 @@ export async function renderChat(page, params) {
   // Chat settings sit in a bar at the top of the conversation; the composer is just text + send
   const tools = h('div', { class: 'chat-tools', role: 'toolbar', 'aria-label': 'Chat settings' },
     h('div', { class: 'chat-tools-inner' }, modelSlot, thinking, scope, length));
+  const voiceBtn = button('', { icon: 'audio-lines', variant: 'ghost', ariaLabel: 'Voice mode: talk with the AI', onClick: () => toggleVoice() });
+  voiceBtn.classList.add('voice-btn');
+  voiceBtn.title = 'Voice mode: talk and listen, hands-free';
   const composer = h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(); } },
     input,
-    h('div', { class: 'composer-actions' }, stopBtn, sendBtn));
-  const composerWrap = h('div', { class: 'composer-wrap' }, composer,
+    h('div', { class: 'composer-actions' }, voiceBtn, stopBtn, sendBtn));
+
+  // Voice mode bar: replaces the text box while voice mode is on
+  const orb = h('div', { class: 'voice-orb', 'aria-hidden': 'true' }, h('span'), h('span'), h('span'), h('span'), h('span'));
+  const voiceStatus = h('b', { class: 'voice-status' }, 'Starting…');
+  const voiceHeard = h('div', { class: 'voice-heard' });
+  const vPause = button('', { icon: 'mic', variant: 'ghost', size: 'sm', ariaLabel: 'Pause the microphone', onClick: () => {
+    const v = st.voice; if (!v) return;
+    const pause = v.state !== 'paused';
+    v.setPaused(pause);
+  } });
+  const vDone = button('Done', { icon: 'check', size: 'sm', onClick: () => st.voice?.finishTurn() });
+  vDone.title = 'Send what you said now, without waiting for the pause';
+  const vHush = button('', { icon: 'volume-x', variant: 'ghost', size: 'sm', ariaLabel: 'Stop speaking', onClick: () => st.voice?.hush() });
+  const vSend = button('Send', { icon: 'arrow-up', variant: 'primary', size: 'sm', onClick: () => { const t = voiceHeard.textContent; st.voice?.send(t); } });
+  const vDiscard = button('Discard', { variant: 'ghost', size: 'sm', onClick: () => st.voice?.discard() });
+  const vEnd = button('', { icon: 'x', variant: 'ghost', size: 'sm', ariaLabel: 'End voice mode', onClick: () => stopVoice() });
+  vEnd.title = 'End voice mode';
+  const voiceBar = h('div', { class: 'voice-bar', hidden: true, role: 'group', 'aria-label': 'Voice mode' },
+    orb, h('div', { class: 'voice-info', 'aria-live': 'polite' }, voiceStatus, voiceHeard),
+    h('div', { class: 'voice-actions' }, vDiscard, vSend, vDone, vHush, vPause, vEnd));
+  // Mock interview: ask for results at any time
+  const mockEnd = button('Finish and get my results', { icon: 'flag', size: 'sm', variant: 'ghost', onClick: () => finishMock() });
+  mockEnd.classList.add('mock-end');
+  mockEnd.hidden = true;
+
+  const composerWrap = h('div', { class: 'composer-wrap' }, mockEnd, voiceBar, composer,
     h('p', { class: 'composer-hint' }, h('span', { class: 'hint-long' }, 'Answers use your documents and cite them. '), 'AI can make mistakes: check important facts.',
       h('span', { class: 'kbd-hint' }, ' ', h('button', { type: 'button', class: 'link-btn', onclick: () => showShortcuts() }, icon('keyboard'), 'Shortcuts'))));
   input.addEventListener('input', autosize);
@@ -114,8 +144,18 @@ export async function renderChat(page, params) {
   const narrow = () => layout.clientWidth <= 1000;
   // Shorter placeholder where the long one would wrap
   new ResizeObserver(() => {
-    input.placeholder = main.clientWidth <= 480 ? 'Ask a question…' : 'Ask about RICS, your competencies or case study…';
+    setPlaceholder();
   }).observe(main);
+  function setPlaceholder() {
+    input.placeholder = st.mode === 'mock' ? 'Type your answer…'
+      : main.clientWidth <= 480 ? 'Ask a question…' : 'Ask about RICS, your competencies or case study…';
+  }
+  function setMode(mode) {
+    st.mode = mode === 'mock' ? 'mock' : 'chat';
+    mockBadge.hidden = st.mode !== 'mock';
+    mockEnd.hidden = st.mode !== 'mock';
+    setPlaceholder();
+  }
   function setListOpen(open) {
     layout.classList.toggle('list-closed', !open);
     if (!narrow()) setPrefs({ chatListOpen: open });
@@ -189,7 +229,8 @@ export async function renderChat(page, params) {
       const g = c.pinned ? 'Pinned' : dayGroup(c.updatedAt);
       if (g !== group) { group = g; nodes.push(h('div', { class: 'chat-group' }, g)); }
       nodes.push(h('div', { class: 'chat-item', role: 'listitem', 'aria-current': String(c.id === st.chatId) },
-        h('a', { href: `#/chat/${c.id}`, onclick: (e) => { e.preventDefault(); openChat(c.id); } }, h('span', { title: c.title }, c.title)),
+        h('a', { href: `#/chat/${c.id}`, onclick: (e) => { e.preventDefault(); openChat(c.id); } },
+          c.mode === 'mock' && h('span', { class: 'mock-icon', title: 'Mock interview' }, icon('graduation-cap')), h('span', { title: c.title }, c.title)),
         h('div', { class: 'item-actions' },
           button('', { icon: c.pinned ? 'pin-off' : 'pin', variant: 'ghost', size: 'sm', ariaLabel: `${c.pinned ? 'Unpin' : 'Pin'} ${c.title}`, onClick: () => togglePin(c) }),
           button('', { icon: 'pencil', variant: 'ghost', size: 'sm', ariaLabel: `Rename ${c.title}`, onClick: () => renameChat(c) }),
@@ -268,6 +309,7 @@ export async function renderChat(page, params) {
     stop();
     st.chatId = null;
     st.messages = [];
+    setMode('chat');
     setTitle('New chat');
     history.replaceState(null, '', '#/chat');
     closeViewer();
@@ -282,8 +324,10 @@ export async function renderChat(page, params) {
     closeViewer();
     try {
       const data = await api('GET', `/api/chats/${id}`);
+      if (data.id !== st.chatId) stopVoice();
       st.chatId = data.id;
       st.messages = data.messages;
+      setMode(data.mode);
       setTitle(data.title);
       history.replaceState(null, '', `#/chat/${id}`);
       renderThread();
@@ -364,6 +408,13 @@ export async function renderChat(page, params) {
       h('h2', {}, `How can I help you prepare${session.me?.name ? `, ${session.me.name.split(' ')[0]}` : ''}?`),
       h('p', {}, 'Ask anything about your competencies, RICS standards or your case study. Answers come from your documents, with references you can open.'),
       h('div', { class: 'welcome-composer' }),
+      h('div', { class: 'mock-card' },
+        h('div', { class: 'mock-card-icon' }, icon('graduation-cap')),
+        h('div', { class: 'mock-card-text' }, h('b', {}, 'Mock interview'),
+          h('span', {}, 'Practise with an AI assessor: one question at a time, feedback after each answer and results at the end. The Search setting sets the focus.')),
+        h('div', { class: 'mock-card-actions' },
+          button('Start with voice', { icon: 'audio-lines', variant: 'primary', size: 'sm', onClick: () => startMock(true) }),
+          button('Start in text', { icon: 'type', size: 'sm', onClick: () => startMock(false) }))),
       h('div', { class: 'starters' }, STARTERS.map((s) => h('button', { type: 'button', class: 'starter', onclick: () => { input.value = s.prompt; autosize(); send(); } },
         icon(s.icon), h('div', {}, h('b', {}, s.title), h('span', {}, s.text))))));
   }
@@ -508,11 +559,13 @@ export async function renderChat(page, params) {
     const chatId = st.chatId;
     let raw = '';
     let frame = 0;
+    const voice = st.voice;
+    voice?.replyStarted(chatId);
     try {
       const res = await fetch(`/api/chats/${chatId}/messages`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', signal: controller.signal,
         body: JSON.stringify({
-          ...payload, model: pref('chatModel') || undefined,
+          ...payload, voice: Boolean(voice), model: pref('chatModel') || undefined,
           reasoning: thinking.disabled ? undefined : thinking.value || undefined, scope: scope.value || 'all', length: length.value,
         }),
       });
@@ -527,6 +580,7 @@ export async function renderChat(page, params) {
         if (done) break;
         raw += decoder.decode(value, { stream: true });
         msg.content = splitCost(raw).text;
+        voice?.replyText(msg.content, false);
         // Redraw at most once per frame, however fast the text arrives
         if (!frame) frame = requestAnimationFrame(() => { frame = 0; el.update(msg, false); scrollBottom(false); });
       }
@@ -539,7 +593,7 @@ export async function renderChat(page, params) {
       if (err.name === 'AbortError') {
         msg.stopped = true;
         msg.content = splitCost(raw).text;
-        if (!msg.content.trim()) { el.remove(); st.streaming = null; setStreaming(false); return; }
+        if (!msg.content.trim()) { el.remove(); st.streaming = null; setStreaming(false); voice?.replyFailed(); return; }
       } else {
         msg.error = err.message;
       }
@@ -548,12 +602,14 @@ export async function renderChat(page, params) {
       st.streaming = null;
       setStreaming(false);
     }
+    if (msg.error || msg.stopped || !msg.content.trim()) voice?.replyFailed();
+    else voice?.replyText(msg.content, true, msg.id);
     if (chatId !== st.chatId) return; // the user switched chats meanwhile
     st.messages.push(msg);
     el.update(msg, true);
     scrollBottom(false);
     loadList();
-    if (!msg.error && !msg.stopped) suggestFollowups(el, msg, chatId);
+    if (!msg.error && !msg.stopped && st.mode !== 'mock') suggestFollowups(el, msg, chatId);
   }
 
   // Three follow-up questions under the latest answer (cheap fast model)
@@ -570,6 +626,117 @@ export async function renderChat(page, params) {
       data.suggestions.map((q) => h('button', { type: 'button', class: 'followup', onclick: () => { input.value = q; autosize(); send(); } },
         icon('corner-down-left'), h('span', {}, q)))));
     scrollBottom(false);
+  }
+
+  // ---------- voice mode ----------
+  const VOICE_TEXT = {
+    listening: 'Listening… speak when you are ready',
+    hearing: 'Listening…',
+    transcribing: 'Got it, checking what you said…',
+    review: 'Send this?',
+    thinking: 'Thinking…',
+    speaking: 'Speaking… talk to interrupt',
+    paused: 'Microphone paused',
+  };
+  function renderVoice(state, detail = '') {
+    composerWrap.dataset.voice = state;
+    voiceStatus.textContent = state === 'speaking' && pref('voiceInterrupt') === false ? 'Speaking…' : VOICE_TEXT[state] || '';
+    if (state === 'hearing' || state === 'review') voiceHeard.textContent = detail || '';
+    else if (state !== 'transcribing') voiceHeard.textContent = '';
+    vSend.hidden = vDiscard.hidden = state !== 'review';
+    vDone.hidden = state !== 'hearing';
+    vHush.hidden = state !== 'speaking';
+    vPause.hidden = state === 'review';
+    vPause.replaceChildren(icon(state === 'paused' ? 'mic-off' : 'mic'));
+    vPause.setAttribute('aria-label', state === 'paused' ? 'Resume the microphone' : 'Pause the microphone');
+    vPause.title = vPause.getAttribute('aria-label');
+  }
+  const orbBars = [...orb.children];
+  function renderLevel(level, inSpeech) {
+    const lvl = Math.min(1, level * 10);
+    orbBars.forEach((b, i) => { b.style.transform = `scaleY(${Math.max(0.18, lvl * (0.5 + 0.5 * Math.sin(((i + 1) / 6) * Math.PI)))})`; });
+    orb.classList.toggle('speech', inSpeech);
+  }
+
+  async function enableVoice() {
+    if (st.voice) return st.voice;
+    composerWrap.classList.add('voice-on');
+    voiceBar.hidden = false;
+    renderVoice('listening');
+    voiceStatus.textContent = 'Allow the microphone to start…';
+    try {
+      st.voice = await startVoice({
+        mode: st.mode,
+        interrupt: pref('voiceInterrupt') !== false,
+        autoSend: pref('voiceAutoSend') !== false,
+        getContext: () => [...st.messages].reverse().find((m) => m.role === 'assistant')?.content.slice(-500) || '',
+        sendTurn: async (text) => {
+          if (st.streaming) { stop(); await new Promise((r) => { const t = setInterval(() => { if (!st.streaming) { clearInterval(t); r(); } }, 30); }); }
+          input.value = text;
+          await send();
+        },
+        onInterrupt: () => stop(),
+        onState: renderVoice,
+        onLevel: renderLevel,
+        onError: (err) => toast(err.message, 'error'),
+      });
+      voiceBtn.setAttribute('aria-pressed', 'true');
+      return st.voice;
+    } catch (err) {
+      composerWrap.classList.remove('voice-on');
+      voiceBar.hidden = true;
+      toast(err.name === 'NotAllowedError' ? 'Microphone blocked. Allow it in your browser settings to use voice mode.' : err.message, 'error');
+      return null;
+    }
+  }
+  function stopVoice() {
+    if (!st.voice) return;
+    st.voice.stop();
+    st.voice = null;
+    composerWrap.classList.remove('voice-on');
+    delete composerWrap.dataset.voice;
+    voiceBar.hidden = true;
+    voiceBtn.setAttribute('aria-pressed', 'false');
+  }
+  function toggleVoice() { if (st.voice) stopVoice(); else enableVoice(); }
+  // Leaving the Chat page turns the microphone off
+  window.addEventListener('hashchange', function leave() {
+    if (page.isConnected) return;
+    window.removeEventListener('hashchange', leave);
+    stopVoice();
+  });
+
+  // ---------- mock interview ----------
+  async function startMock(withVoice) {
+    stop();
+    stopVoice();
+    closeViewer();
+    st.mode = 'mock';
+    // Voice first: the browser only allows the microphone and audio straight after the tap
+    if (withVoice && !(await enableVoice())) { setMode('chat'); return; }
+    try {
+      const c = await api('POST', '/api/chats', { mode: 'mock' });
+      st.chatId = c.id;
+      st.messages = [];
+      setMode('mock');
+      setTitle(c.title);
+      history.replaceState(null, '', `#/chat/${c.id}`);
+      inner.replaceChildren();
+      placeComposer();
+      loadList();
+      if (narrow()) setListOpen(false);
+      await runAnswer({ start: true });
+    } catch (e) {
+      toast(e.message, 'error');
+      stopVoice();
+      setMode('chat');
+    }
+  }
+  function finishMock() {
+    if (st.mode !== 'mock' || !st.chatId) return;
+    input.value = 'Please end the interview now and give me my results.';
+    if (st.streaming) stop();
+    setTimeout(() => send(), st.streaming ? 100 : 0);
   }
 
   // ---------- keyboard shortcuts ----------
