@@ -48,7 +48,9 @@ export async function renderChat(page, params) {
     listBody);
 
   // ---------- conversation ----------
-  const titleEl = h('h1', {}, 'New chat');
+  const titleEl = h('h1', { title: 'Click to rename', tabindex: '0', role: 'button', 'aria-label': 'Chat title (click to rename)' }, 'New chat');
+  titleEl.addEventListener('click', () => editTitle());
+  titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editTitle(); } });
   const sizer = sizeStepper(pref('chatSize') || 14, { min: 12, max: 24, label: 'chat', onChange: (v) => { setPrefs({ chatSize: v }); page.style.setProperty('--chat-size', `${v}px`); } });
   sizer.classList.add('hide-narrow');
   const exportBtn = button('', { icon: 'download', variant: 'ghost', size: 'sm', ariaLabel: 'Export chat as a Markdown file', onClick: exportChat });
@@ -59,7 +61,7 @@ export async function renderChat(page, params) {
     appMenu,
     button('', { icon: 'panel-left', variant: 'ghost', size: 'sm', ariaLabel: 'Show or hide chat list', onClick: () => setListOpen(layout.classList.contains('list-closed')) }),
     titleEl, sizer, exportBtn,
-    button('', { icon: 'plus', variant: 'ghost', size: 'sm', ariaLabel: 'New chat', onClick: () => newChat() }));
+    button('', { icon: 'plus', variant: 'ghost', size: 'sm', ariaLabel: 'New chat (Ctrl+Shift+O)', onClick: () => newChat() }));
 
   const inner = h('div', { class: 'thread-inner', 'aria-live': 'polite' });
   const jump = button('Jump to latest', { icon: 'arrow-down', size: 'sm', onClick: () => scrollBottom(true) });
@@ -90,13 +92,15 @@ export async function renderChat(page, params) {
     h('div', { class: 'composer-actions' }, stopBtn, sendBtn));
   const composerWrap = h('div', { class: 'composer-wrap' }, composer,
     h('p', { class: 'composer-hint' }, h('span', { class: 'hint-long' }, 'Answers use your documents and cite them. '), 'AI can make mistakes: check important facts.',
-      h('span', { class: 'kbd-hint' }, ' ', h('span', { class: 'kbd' }, 'Enter'), ' to send, ', h('span', { class: 'kbd' }, 'Shift'), '+', h('span', { class: 'kbd' }, 'Enter'), ' for a new line.')));
+      h('span', { class: 'kbd-hint' }, ' ', h('button', { type: 'button', class: 'link-btn', onclick: () => showShortcuts() }, icon('keyboard'), 'Shortcuts'))));
   input.addEventListener('input', autosize);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
 
-  const main = h('section', { class: 'chat-main', 'aria-label': 'Conversation' }, head, tools, thread, composerWrap);
+  // Settings sit in the header row on wide screens and wrap to their own row on narrow ones
+  head.insertBefore(tools, sizer);
+  const main = h('section', { class: 'chat-main', 'aria-label': 'Conversation' }, head, thread, composerWrap);
   const viewer = h('aside', { class: 'viewer', 'aria-label': 'Document viewer', hidden: true });
   const layout = h('div', { class: 'chat-layout' }, list, h('div', { class: 'chat-scrim', onclick: () => setListOpen(false) }), main, viewer);
   page.replaceChildren(h('h1', { class: 'sr-only' }, 'Chat'), layout);
@@ -122,7 +126,10 @@ export async function renderChat(page, params) {
   // ---------- helpers ----------
   function autosize() { input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 220)}px`; }
   const nearBottom = () => thread.scrollHeight - thread.scrollTop - thread.clientHeight < 120;
-  function scrollBottom(force) { if (force || nearBottom()) thread.scrollTop = thread.scrollHeight; }
+  function scrollBottom(force) {
+    if (force || nearBottom()) thread.scrollTop = thread.scrollHeight;
+    jump.classList.toggle('show', !nearBottom() && Boolean(st.messages.length));
+  }
   function setStreaming(on) {
     stopBtn.hidden = !on;
     sendBtn.hidden = on;
@@ -161,6 +168,9 @@ export async function renderChat(page, params) {
       st.chats = await api('GET', `/api/chats${search.value.trim() ? `?q=${encodeURIComponent(search.value.trim())}` : ''}`);
     } catch (e) { toast(e.message, 'error'); return; }
     renderList();
+    // A stopped first answer has no trailer: take the server's title for the open chat
+    const cur = st.chats.find((c) => c.id === st.chatId);
+    if (cur && cur.title && st.title === 'New chat' && cur.title !== st.title) setTitle(cur.title);
   }
   function renderList() {
     if (!st.chats.length) {
@@ -170,11 +180,12 @@ export async function renderChat(page, params) {
     const nodes = [];
     let group = null;
     for (const c of st.chats) {
-      const g = dayGroup(c.updatedAt);
+      const g = c.pinned ? 'Pinned' : dayGroup(c.updatedAt);
       if (g !== group) { group = g; nodes.push(h('div', { class: 'chat-group' }, g)); }
       nodes.push(h('div', { class: 'chat-item', role: 'listitem', 'aria-current': String(c.id === st.chatId) },
         h('a', { href: `#/chat/${c.id}`, onclick: (e) => { e.preventDefault(); openChat(c.id); } }, h('span', { title: c.title }, c.title)),
         h('div', { class: 'item-actions' },
+          button('', { icon: c.pinned ? 'pin-off' : 'pin', variant: 'ghost', size: 'sm', ariaLabel: `${c.pinned ? 'Unpin' : 'Pin'} ${c.title}`, onClick: () => togglePin(c) }),
           button('', { icon: 'pencil', variant: 'ghost', size: 'sm', ariaLabel: `Rename ${c.title}`, onClick: () => renameChat(c) }),
           button('', { icon: 'trash-2', variant: 'ghost', size: 'sm', ariaLabel: `Delete ${c.title}`, onClick: () => deleteChat(c) }))));
     }
@@ -195,6 +206,41 @@ export async function renderChat(page, params) {
     });
     inputEl.select();
   }
+  async function togglePin(c) {
+    try {
+      await api('PATCH', `/api/chats/${c.id}`, { pinned: !c.pinned });
+      toast(c.pinned ? 'Chat unpinned' : 'Chat pinned');
+      await loadList();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // Inline rename from the header title
+  function editTitle() {
+    if (!st.chatId || head.querySelector('.title-input')) return;
+    const inputEl = h('input', { class: 'input title-input', value: st.title, maxlength: '120', 'aria-label': 'Chat title' });
+    titleEl.replaceWith(inputEl);
+    inputEl.select();
+    let done = false;
+    const finish = async (save) => {
+      if (done) return;
+      done = true;
+      const v = inputEl.value.trim();
+      inputEl.replaceWith(titleEl);
+      if (save && v && v !== st.title) {
+        try {
+          await api('PATCH', `/api/chats/${st.chatId}`, { title: v });
+          setTitle(v);
+          loadList();
+        } catch (e) { toast(e.message, 'error'); }
+      }
+    };
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+    });
+    inputEl.addEventListener('blur', () => finish(true));
+  }
+
   async function deleteChat(c) {
     if (!(await confirmDialog({ title: 'Delete chat?', message: `“${c.title}” and all its messages will be deleted.`, confirmLabel: 'Delete', danger: true }))) return;
     try {
@@ -245,14 +291,65 @@ export async function renderChat(page, params) {
   }
 
   // ---------- thread rendering ----------
+  // Wide screens: an empty chat shows the composer in the middle (it docks at the bottom once a message is sent)
+  function placeComposer() {
+    const slot = inner.querySelector('.welcome-composer');
+    const centre = Boolean(slot) && main.clientWidth > 640;
+    main.classList.toggle('is-empty', centre);
+    if (centre && composerWrap.parentElement !== slot) slot.append(composerWrap);
+    if (!centre && composerWrap.parentElement !== main) main.append(composerWrap);
+  }
+  new ResizeObserver(() => placeComposer()).observe(main);
+
   function renderThread() {
     if (!st.messages.length) {
       inner.replaceChildren(welcome());
+      placeComposer();
       return;
     }
     inner.replaceChildren(...st.messages.map((m, i) => (m.role === 'user'
-      ? h('div', { class: 'msg-user' }, m.content)
+      ? userEl(m)
       : assistantEl(m, i === st.messages.length - 1))));
+    placeComposer();
+  }
+
+  // Your message: bubble with Copy and Edit (edit resends it and replaces what followed)
+  function userEl(m) {
+    const bubble = h('div', { class: 'msg-user' }, m.content);
+    const actions = h('div', { class: 'msg-user-actions' },
+      button('', { icon: 'copy', variant: 'ghost', size: 'sm', ariaLabel: 'Copy message', onClick: async () => {
+        try { await navigator.clipboard.writeText(m.content); toast('Message copied'); } catch { toast('Copy failed', 'error'); }
+      } }),
+      button('', { icon: 'pencil', variant: 'ghost', size: 'sm', ariaLabel: 'Edit message', onClick: () => startEdit() }));
+    const wrap = h('div', { class: 'msg-user-wrap' }, bubble, actions);
+    function startEdit() {
+      if (st.streaming) { toast('Wait for the answer to finish, or press Stop.', 'info'); return; }
+      if (!m.id) { toast('This message cannot be edited yet. Please try again in a moment.', 'info'); return; }
+      const ta = h('textarea', { class: 'textarea', rows: '3', 'aria-label': 'Edit message' }, m.content);
+      const editor = h('form', { class: 'msg-edit', onsubmit: (e) => { e.preventDefault(); resend(); } },
+        ta,
+        h('div', { class: 'row' }, h('span', { class: 'hint spacer' }, 'Editing replaces this question and everything after it.'),
+          button('Cancel', { size: 'sm', onClick: () => editor.replaceWith(wrap) }),
+          button('Send', { size: 'sm', variant: 'primary', type: 'submit', icon: 'arrow-up' })));
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); resend(); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); editor.replaceWith(wrap); }
+      });
+      wrap.replaceWith(editor);
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      async function resend() {
+        const text = ta.value.trim();
+        if (!text) return;
+        const idx = st.messages.indexOf(m);
+        st.messages = st.messages.slice(0, idx);
+        const msg = { role: 'user', content: text };
+        st.messages.push(msg);
+        renderThread();
+        await runAnswer({ content: text, editFrom: m.id }, msg);
+      }
+    }
+    return wrap;
   }
 
   function welcome() {
@@ -260,6 +357,7 @@ export async function renderChat(page, params) {
       h('div', { class: 'logo' }, icon('sparkles')),
       h('h2', {}, `How can I help you prepare${session.me?.name ? `, ${session.me.name.split(' ')[0]}` : ''}?`),
       h('p', {}, 'Ask anything about your competencies, RICS standards or your case study. Answers come from your documents, with references you can open.'),
+      h('div', { class: 'welcome-composer' }),
       h('div', { class: 'starters' }, STARTERS.map((s) => h('button', { type: 'button', class: 'starter', onclick: () => { input.value = s.prompt; autosize(); send(); } },
         icon(s.icon), h('div', {}, h('b', {}, s.title), h('span', {}, s.text))))));
   }
@@ -324,9 +422,12 @@ export async function renderChat(page, params) {
         nodes.push(h('div', { class: 'callout warn msg-error' }, icon('triangle-alert'), h('div', { class: 'spacer' }, msg.error),
           button('Try again', { icon: 'refresh-cw', size: 'sm', onClick: () => regenerate() })));
       } else if (!msg.content) {
-        nodes.push(h('div', { class: 'typing', 'aria-label': 'Writing answer' }, h('i'), h('i'), h('i')));
+        // Before the first words arrive: what is happening
+        const status = h('div', { class: 'ai-status', role: 'status' }, icon('loader-circle', 'spin'), h('span', {}, 'Searching your documents…'));
+        setTimeout(() => { if (status.isConnected) status.lastChild.textContent = 'Thinking…'; }, 2500);
+        nodes.push(status);
       } else {
-        nodes.push(h('div', { class: 'md' }, markdownNodes(msg)));
+        nodes.push(h('div', { class: `md${done ? '' : ' streaming'}` }, markdownNodes(msg)));
       }
       if (done && msg.content) {
         const groups = citedGroups(msg);
@@ -370,9 +471,11 @@ export async function renderChat(page, params) {
       } catch (e) { toast(e.message, 'error'); input.value = text; return; }
     }
     if (!st.messages.length) inner.replaceChildren();
-    st.messages.push({ role: 'user', content: text });
-    inner.append(h('div', { class: 'msg-user' }, text));
-    await runAnswer({ content: text });
+    const userMsg = { role: 'user', content: text };
+    st.messages.push(userMsg);
+    inner.append(userEl(userMsg));
+    placeComposer();
+    await runAnswer({ content: text }, userMsg);
   }
 
   async function regenerate() {
@@ -384,8 +487,9 @@ export async function renderChat(page, params) {
 
   function stop() { st.streaming?.controller.abort(); }
 
-  async function runAnswer(payload) {
+  async function runAnswer(payload, userMsg = null) {
     inner.querySelectorAll('.msg-ai').forEach((x) => x.querySelector('[aria-label="Regenerate answer"]')?.remove());
+    inner.querySelectorAll('.followups').forEach((x) => x.remove());
     const msg = { role: 'assistant', content: '', sources: [], model: pref('chatModel') || st.models?.defaults.answerModel };
     const el = assistantEl(msg, true);
     el.update(msg, false);
@@ -396,6 +500,7 @@ export async function renderChat(page, params) {
     setStreaming(true);
     const chatId = st.chatId;
     let raw = '';
+    let frame = 0;
     try {
       const res = await fetch(`/api/chats/${chatId}/messages`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', signal: controller.signal,
@@ -415,11 +520,12 @@ export async function renderChat(page, params) {
         if (done) break;
         raw += decoder.decode(value, { stream: true });
         msg.content = splitCost(raw).text;
-        el.update(msg, false);
-        scrollBottom(false);
+        // Redraw at most once per frame, however fast the text arrives
+        if (!frame) frame = requestAnimationFrame(() => { frame = 0; el.update(msg, false); scrollBottom(false); });
       }
       const { text, sources, meta } = splitCost(raw);
       Object.assign(msg, { content: text, sources, id: meta.messageId });
+      if (userMsg && meta.userMessageId) userMsg.id = meta.userMessageId;
       if (meta.title && chatId === st.chatId) setTitle(meta.title);
       if (!text.trim()) msg.error = 'The AI returned no answer. Please try again.';
     } catch (err) {
@@ -431,6 +537,7 @@ export async function renderChat(page, params) {
         msg.error = err.message;
       }
     } finally {
+      cancelAnimationFrame(frame); // a redraw still queued must not undo the final one (e.g. after Stop)
       st.streaming = null;
       setStreaming(false);
     }
@@ -439,7 +546,44 @@ export async function renderChat(page, params) {
     el.update(msg, true);
     scrollBottom(false);
     loadList();
+    if (!msg.error && !msg.stopped) suggestFollowups(el, chatId);
   }
+
+  // Three follow-up questions under the latest answer (cheap fast model)
+  async function suggestFollowups(el, chatId) {
+    let data;
+    try { data = await api('POST', `/api/chats/${chatId}/suggestions`); } catch { return; }
+    if (chatId !== st.chatId || !el.isConnected || st.streaming || !data.suggestions?.length) return;
+    el.querySelector('.msg-body').append(h('div', { class: 'followups', 'aria-label': 'Suggested follow-up questions' },
+      data.suggestions.map((q) => h('button', { type: 'button', class: 'followup', onclick: () => { input.value = q; autosize(); send(); } },
+        icon('corner-down-left'), h('span', {}, q)))));
+    scrollBottom(false);
+  }
+
+  // ---------- keyboard shortcuts ----------
+  const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+  function showShortcuts() {
+    const rows = [
+      [`${MOD} + Shift + O`, 'New chat'], [`${MOD} + K`, 'Search chats'], ['/', 'Focus the message box'],
+      ['Enter', 'Send'], ['Shift + Enter', 'New line'], ['Esc', 'Stop generating / close the document'],
+    ];
+    openModal({
+      title: 'Keyboard shortcuts',
+      body: [h('div', { class: 'shortcuts' }, rows.map(([k, d]) => h('div', { class: 'shortcut' }, h('span', {}, d),
+        h('span', { class: 'keys' }, k.split(' + ').map((x) => h('span', { class: 'kbd' }, x))))))],
+      actions: [{ label: 'Done', variant: 'primary' }],
+    });
+  }
+  document.addEventListener('keydown', function chatKeys(e) {
+    if (!page.isConnected) { document.removeEventListener('keydown', chatKeys); return; }
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.shiftKey && e.key.toLowerCase() === 'o') { e.preventDefault(); newChat(); }
+    else if (mod && !e.shiftKey && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      setListOpen(true);
+      search.focus();
+    } else if (e.key === 'Escape' && st.streaming && viewer.hidden && !document.querySelector('dialog[open]')) { e.preventDefault(); stop(); }
+  });
 
   // ---------- export ----------
   function exportChat() {

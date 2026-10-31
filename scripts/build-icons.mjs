@@ -11,7 +11,7 @@ const ICONS = [
   'type', 'send', 'eraser', 'headphones', 'cloud-upload', 'folder', 'layers', 'bot', 'gauge', 'eye', 'log-in',
   'picture-in-picture-2', 'chevron-left', 'captions',
   'refresh-cw', 'square', 'arrow-up', 'download', 'list', 'ellipsis', 'messages-square', 'quote', 'panel-right-close', 'text-search',
-  'sliders-horizontal',
+  'sliders-horizontal', 'pin', 'pin-off', 'keyboard', 'corner-down-left',
 ];
 
 const out = {};

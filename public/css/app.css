@@ -877,3 +877,82 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
 
 /* Touch screens have no Enter/Shift keys to hint at */
 @media (hover: none) { .composer-hint .kbd-hint { display: none; } }
+
+/* =========================================================================
+   Chat refinements: header with settings, centred welcome, message tools
+   ========================================================================= */
+.chat-head { flex-wrap: wrap; row-gap: 4px; }
+.chat-head h1 { cursor: text; border-radius: var(--r-sm); padding: 4px 6px; margin-left: -2px; }
+.chat-head h1:hover { background: var(--surface-2); }
+.chat-head .title-input { flex: 1; min-width: 160px; min-height: 32px; height: 32px; padding: 4px 8px; font-weight: 600; }
+.chat-head .chat-tools { padding: 0; background: none; border: 0; flex: none; }
+.chat-head .chat-tools-inner { max-width: none; margin: 0; flex-wrap: nowrap; gap: 2px; }
+/* Wide screens: quiet, borderless settings in the header row */
+@container chat (min-width: 901px) {
+  .chat-head .chat-tools .dd-trigger, .chat-head .chat-tools .combo-trigger { border-color: transparent; background: transparent; color: var(--text-2); }
+  .chat-head .chat-tools .dd-trigger:hover, .chat-head .chat-tools .combo-trigger:hover,
+  .chat-head .chat-tools .dd-trigger[aria-expanded="true"], .chat-head .chat-tools .combo-trigger[aria-expanded="true"] { background: var(--surface-2); color: var(--text); border-color: transparent; }
+  .chat-head .chat-tools .combo-compact .combo-trigger { max-width: 180px; }
+  .chat-head .chat-tools .dd-sm { max-width: 200px; }
+}
+/* Narrower: settings wrap to their own row under the title */
+@container chat (max-width: 900px) {
+  .chat-head .chat-tools { order: 99; flex-basis: 100%; margin: 2px -8px -4px; padding: 6px 8px; border-top: 1px solid var(--border); }
+  .chat-head .chat-tools-inner { flex-wrap: wrap; gap: 6px; }
+}
+@container chat (max-width: 640px) {
+  .chat-head .chat-tools-inner { display: grid; }
+}
+
+/* Reading comfort */
+.thread-inner { max-width: 780px; gap: var(--s-8); }
+.md { line-height: 1.7; }
+.md > * + * { margin-top: .85em; }
+.msg-user { border-radius: 20px 20px 6px 20px; }
+
+/* Your messages: copy / edit on hover (always visible on touch screens) */
+.msg-user-wrap { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; max-width: min(85%, 640px); }
+.msg-user-wrap .msg-user { max-width: 100%; }
+.msg-user-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.msg-user-wrap:hover .msg-user-actions, .msg-user-wrap:focus-within .msg-user-actions { opacity: 1; }
+@media (hover: none) { .msg-user-actions { opacity: 1; } }
+.msg-edit { align-self: flex-end; width: min(640px, 100%); display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
+.msg-edit .textarea { font-size: var(--chat-size); }
+
+/* Answer status and writing cursor */
+.ai-status { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); font-size: var(--t-sm); padding: 4px 0; }
+.ai-status .icon { width: 15px; height: 15px; }
+@keyframes caret { 50% { opacity: 0; } }
+.md.streaming > :last-child:not(ul):not(ol):not(.table-wrap):not(pre)::after,
+.md.streaming > :is(ul, ol):last-child > li:last-child::after {
+  content: ""; display: inline-block; width: 7px; height: 1.05em; margin-left: 3px; vertical-align: -3px; border-radius: 2px; background: var(--primary); animation: caret 1s steps(1) infinite;
+}
+
+/* Follow-up suggestions */
+.followups { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: var(--s-4); }
+.followup { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 7px 12px; text-align: left; cursor: pointer; font-size: var(--t-sm); color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.followup:hover { border-color: var(--primary); background: var(--accent-soft); }
+.followup .icon { width: 14px; height: 14px; color: var(--text-3); transform: scaleX(-1); }
+
+/* Empty chat on wide screens: greeting and composer in the middle, starters as chips */
+.chat-main.is-empty .chat-thread { display: flex; flex-direction: column; }
+.chat-main.is-empty .thread-inner { flex: 1; width: 100%; justify-content: center; padding-bottom: 12vh; }
+.chat-main.is-empty .chat-welcome { flex: 0; padding: 0; }
+.welcome-composer { width: min(720px, 100%); margin-top: var(--s-4); }
+.welcome-composer .composer-wrap { padding: 0; }
+.welcome-composer .composer textarea { min-height: 64px; }
+.chat-main.is-empty .starters { display: flex; flex-wrap: wrap; justify-content: center; width: min(720px, 100%); margin-top: var(--s-2); }
+.chat-main.is-empty .starter { padding: 8px 14px; border-radius: 99px; align-items: center; box-shadow: none; }
+.chat-main.is-empty .starter .icon { width: 16px; height: 16px; margin: 0; }
+.chat-main.is-empty .starter b { font-weight: 500; font-size: var(--t-sm); }
+.chat-main.is-empty .starter div > span { display: none; }
+.welcome-composer:empty { display: none; }
+
+/* Small text buttons and the shortcuts list */
+.link-btn { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0; color: var(--text-3); font: inherit; cursor: pointer; }
+.link-btn:hover { color: var(--text); text-decoration: underline; }
+.link-btn .icon { width: 13px; height: 13px; }
+.shortcuts { display: flex; flex-direction: column; }
+.shortcut { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); padding: 10px 0; border-bottom: 1px solid var(--border); }
+.shortcut:last-child { border-bottom: 0; }
+.shortcut .keys { display: inline-flex; gap: 4px; }
