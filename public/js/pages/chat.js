@@ -678,6 +678,7 @@ export async function renderChat(page, params) {
         interrupt: pref('voiceInterrupt') !== false,
         autoSend: pref('voiceAutoSend') !== false,
         pause: pref('voicePause') || 'normal',
+        loudspeaker: pref('voiceLoudspeaker') !== false,
         sendTurn: async (text) => {
           if (st.streaming) { stop(); await new Promise((r) => { const t = setInterval(() => { if (!st.streaming) { clearInterval(t); r(); } }, 30); }); }
           input.value = text;

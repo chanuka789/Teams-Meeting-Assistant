@@ -114,3 +114,10 @@ test('segmenter says why a segment ended: a pause, or too long', () => {
   for (let i = 0; i < 20; i++) s.push(quiet);
   assert.deepEqual(ends, ['max', 'pause']);
 });
+
+test('phones use the loudspeaker: no call-mode processing; computers and "loudspeaker off" keep echo cancellation', async () => {
+  const { micConstraints } = await import('../public/js/voice.js');
+  assert.deepEqual(micConstraints(true, true), { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 });
+  assert.equal(micConstraints(true, false).echoCancellation, true);
+  assert.equal(micConstraints(false, true).echoCancellation, true);
+});

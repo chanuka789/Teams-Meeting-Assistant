@@ -257,6 +257,7 @@ function voiceSection(models) {
     { value: 'short', label: 'Short' }, { value: 'normal', label: 'Normal' }, { value: 'long', label: 'Long' },
   ], pref('voicePause') || 'normal', (v) => { setPrefs({ voicePause: v }); saved('Pause length'); }, 'Pause before sending');
   const interrupt = toggle(pref('voiceInterrupt') !== false, (v) => setPrefs({ voiceInterrupt: v }));
+  const loudspeaker = toggle(pref('voiceLoudspeaker') !== false, (v) => setPrefs({ voiceLoudspeaker: v }));
   const autoSend = toggle(pref('voiceAutoSend') !== false, (v) => setPrefs({ voiceAutoSend: v }));
   const slots = [loading(), loading(), loading(), loading(), loading()];
   const el = section('voice', 'Voice', 'Talk with the AI hands-free on the Chat page, and practise mock interviews out loud.',
@@ -264,6 +265,7 @@ function voiceSection(models) {
       row('Voice input model', 'Turns your speech into text. Accurate models with RICS word hints work best.', slots[0]),
       row('Pause before sending', 'How long you can pause before your turn is sent. Mock interviews always use Long.', pause),
       row('Interrupt by speaking', 'Talk over the AI to stop it. Best with headphones; tapping the circle also works.', interrupt),
+      row('Phone loudspeaker', 'On phones, play replies through the main speaker. Off: the earpiece, with the phone’s echo cancellation.', loudspeaker),
       row('Send automatically', 'Off: check the text of each turn before it is sent.', autoSend),
     ]),
     card('Replies', [

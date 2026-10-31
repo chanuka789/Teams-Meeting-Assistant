@@ -14,6 +14,18 @@ const SILENT_WAV = `data:audio/wav;base64,${bytesToBase64(encodeWav(new Float32A
 export const VOICE_PAUSES = { short: 600, normal: 900, long: 1500 };
 const MAX_TURN_SECONDS = 150;
 
+// Phones and tablets (iPadOS reports itself as a Mac with touch)
+export const isPhone = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.platform || ''));
+
+// Microphone settings. On phones, echo cancellation (and the other "call" processing) makes the browser switch to
+// phone-call audio, which plays through the earpiece. With loudspeaker on, phones skip it so the reply plays through
+// the main speaker; the AI's echo is then handled by the barge-in detector (it learns how loud the echo is).
+export function micConstraints(loudspeaker = true, phone = isPhone()) {
+  const callMode = !(loudspeaker && phone);
+  return { echoCancellation: callMode, noiseSuppression: callMode, autoGainControl: callMode, channelCount: 1 };
+}
+
 function concat(parts) {
   const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
   let off = 0;
@@ -117,7 +129,7 @@ function createSpeaker(ctx, { onStart, onIdle, onError }) {
 }
 
 // ---------- the voice session ----------
-// opts: { mode: 'chat' | 'mock', pause: 'short'|'normal'|'long', interrupt, autoSend,
+// opts: { mode: 'chat' | 'mock', pause: 'short'|'normal'|'long', interrupt, autoSend, loudspeaker (phones),
 //         sendTurn(text) -> Promise (resolves when the reply has finished streaming), onInterrupt(),
 //         onState(state, detail), onLevel(level, who: 'you' | 'ai'), onError(err) }
 // States: listening, hearing, transcribing, review, thinking, speaking, paused
@@ -141,7 +153,7 @@ export async function startVoice(opts) {
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      audio: micConstraints(opts.loudspeaker !== false),
     });
     await ctx.audioWorklet.addModule('/capture-worklet.js');
   } catch (err) {
