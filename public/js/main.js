@@ -187,7 +187,37 @@ async function showSignedIn() {
   await route();
 }
 
+// Phone keyboards: keep the app inside the part of the screen the keyboard leaves free, so text boxes
+// at the bottom (the chat composer) stay visible. Android Chrome does this itself with
+// interactive-widget=resizes-content (index.html); iOS Safari only shrinks the visual viewport.
+function trackKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const html = document.documentElement;
+  let fullH = 0;
+  let fullW = 0;
+  const typing = () => document.activeElement?.matches?.('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, [contenteditable="true"]');
+  const update = () => {
+    if (window.innerWidth !== fullW) { fullW = window.innerWidth; fullH = 0; } // rotation: measure again
+    fullH = Math.max(fullH, window.innerHeight, vv.height);
+    const open = typing() && vv.height < fullH * 0.8 && Math.abs((vv.scale || 1) - 1) < 0.01; // not pinch-zoom
+    html.classList.toggle('kb-open', open);
+    if (open && vv.height < window.innerHeight - 1) {
+      html.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
+      if (window.scrollY) window.scrollTo(0, 0); // iOS pans the page instead of resizing it
+    } else {
+      html.style.removeProperty('--app-h');
+    }
+  };
+  vv.addEventListener('resize', update);
+  vv.addEventListener('scroll', update);
+  document.addEventListener('focusin', () => setTimeout(update, 300));
+  document.addEventListener('focusout', () => setTimeout(update, 100));
+  update();
+}
+
 async function boot() {
+  trackKeyboard();
   autoEnhanceSelects(); // every <select class="select"> becomes the app-styled dropdown
   setUnauthorizedHandler(() => {
     if (session.me) { toast('Your session ended. Please sign in again.', 'info'); setTimeout(() => location.reload(), 1200); }

@@ -67,7 +67,13 @@ export async function renderChat(page, params) {
   const jump = button('Jump to latest', { icon: 'arrow-down', size: 'sm', onClick: () => scrollBottom(true) });
   jump.classList.add('jump-chat');
   const thread = h('div', { class: 'chat-thread' }, inner, jump);
-  thread.addEventListener('scroll', () => jump.classList.toggle('show', !nearBottom() && Boolean(st.messages.length)));
+  // Remember whether the reader is at the latest message, so a smaller window (phone keyboard) keeps it in view
+  let atLatest = true;
+  thread.addEventListener('scroll', () => {
+    atLatest = nearBottom();
+    jump.classList.toggle('show', !atLatest && Boolean(st.messages.length));
+  });
+  new ResizeObserver(() => { if (atLatest && page.isConnected) thread.scrollTop = thread.scrollHeight; }).observe(thread);
 
   // composer
   const input = h('textarea', { rows: '1', placeholder: 'Ask about RICS, your competencies or case study…', 'aria-label': 'Message' });

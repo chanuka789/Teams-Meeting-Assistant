@@ -223,7 +223,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .steps b { color: var(--text); font-weight: 600; }
 
 /* ---------- app shell ---------- */
-.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; height: 100dvh; }
+.app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; height: var(--app-h, 100dvh); }
 .sidebar {
   display: flex; flex-direction: column; gap: var(--s-2); min-height: 0;
   padding: var(--s-4) var(--s-3); background: var(--surface); border-right: 1px solid var(--border);
@@ -460,8 +460,7 @@ dialog.modal[open] { animation: pop .18s var(--ease); }
 .range { width: 100%; accent-color: var(--primary); }
 .preview { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); background: var(--surface-2); }
 .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--s-3); }
-@media (max-width: 1100px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 .stat { padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
 .stat span { font-size: var(--t-xs); color: var(--text-3); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
 .stat b { display: block; font-size: var(--t-xl); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -959,3 +958,40 @@ dialog.modal .modal-body { overflow-y: auto; min-height: 0; }
 .shortcut { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); padding: 10px 0; border-bottom: 1px solid var(--border); }
 .shortcut:last-child { border-bottom: 0; }
 .shortcut .keys { display: inline-flex; gap: 4px; }
+
+/* ---------- Settings on tablet and phone ---------- */
+.settings-nav .short { display: none; }
+/* Cost boxes: Total on its own row, then four even boxes (no lonely box at the end) */
+.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.stats .stat:first-child { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); background: var(--accent-soft); border-color: transparent; }
+.stats .stat:first-child b { font-size: var(--t-2xl); margin: 0; }
+.section-body > *, .field, .settings .stack > * { min-width: 0; }
+@media (max-width: 900px) {
+  .settings-nav { gap: var(--s-1); }
+  .settings-nav a { flex: none; }
+}
+@media (max-width: 640px) {
+  .page:has(.settings) { padding-top: var(--s-4); gap: var(--s-4); }
+  .page:has(.settings) .page-head p { display: none; }
+  /* All five tabs fit: icon above a short label */
+  .settings-nav { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; padding: 6px var(--s-2); margin: 0 calc(-1 * var(--s-4)); overflow: visible; }
+  .settings-nav a { flex-direction: column; gap: 3px; padding: 6px 2px; font-size: 11px; font-weight: 600; justify-content: center; min-width: 0; border: 1px solid transparent; }
+  .settings-nav a .lbl { display: none; }
+  .settings-nav a .short { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .settings-nav a .icon { width: 18px; height: 18px; }
+  .section-form, .section { scroll-margin-top: 76px; }
+  .section-head { padding: var(--s-4); }
+  .section-body { padding: var(--s-4); gap: var(--s-4); }
+  .section-foot { padding: var(--s-3) var(--s-4); }
+  .section-foot .btn { flex: 1; justify-content: center; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+  .stat { padding: var(--s-3); }
+  .stat b { font-size: var(--t-lg); }
+}
+
+/* Phone keyboard open on the Chat page: give the space to the messages and the text box */
+@media (max-width: 640px) {
+  .kb-open .chat-head .chat-tools { display: none; }
+  .kb-open .chat-welcome > .logo, .kb-open .chat-welcome > p { display: none; }
+  .kb-open .composer-hint { display: none; }
+}

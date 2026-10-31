@@ -8,11 +8,11 @@ import { api } from '../api.js';
 import { session, pref, setPrefs, applyTheme, loadModels } from '../state.js';
 
 const SECTIONS = [
-  { id: 'profile', label: 'Profile', icon: 'user-round' },
-  { id: 'appearance', label: 'Appearance', icon: 'sun' },
-  { id: 'models', label: 'AI models', icon: 'bot' },
-  { id: 'usage', label: 'Usage & cost', icon: 'gauge' },
-  { id: 'security', label: 'Password', icon: 'key-round' },
+  { id: 'profile', label: 'Profile', short: 'Profile', icon: 'user-round' },
+  { id: 'appearance', label: 'Appearance', short: 'Display', icon: 'sun' },
+  { id: 'models', label: 'AI models', short: 'AI models', icon: 'bot' },
+  { id: 'usage', label: 'Usage & cost', short: 'Usage', icon: 'gauge' },
+  { id: 'security', label: 'Password', short: 'Password', icon: 'key-round' },
 ];
 
 const section = (id, title, text, body, foot) => h('section', { class: 'card section', id: `s-${id}`, 'aria-labelledby': `h-${id}` },
@@ -32,10 +32,10 @@ export async function renderSettings(page, { rebuildShell }) {
     const scroller = page.closest('.main');
     const target = page.querySelector(`#s-${s.id}`);
     const nav = e.currentTarget.parentElement;
-    const offset = getComputedStyle(nav).position === 'sticky' && nav.scrollWidth > nav.clientWidth ? nav.offsetHeight + 12 : 24;
+    const offset = getComputedStyle(nav).position === 'sticky' && getComputedStyle(nav).flexDirection !== 'column' ? nav.offsetHeight + 12 : 24;
     if (target) scroller.scrollTo({ top: target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - offset, behavior: 'smooth' });
     nav.scrollTo({ left: e.currentTarget.offsetLeft - 16, behavior: 'smooth' });
-  } }, icon(s.icon), s.label));
+  } }, icon(s.icon), h('span', { class: 'lbl' }, s.label), h('span', { class: 'short', 'aria-hidden': 'true' }, s.short)));
   navLinks[0].setAttribute('aria-current', 'true');
 
   page.replaceChildren(
