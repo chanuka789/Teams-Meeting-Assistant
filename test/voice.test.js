@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { speakable, takeChunks } from '../public/voice-text.js';
 import { toTtsModels, englishFirst } from '../public/models.js';
-import { buildChatMessages, buildVoiceTidyMessages, VOICE_STYLE, MOCK_SYSTEM } from '../lib/prompt.js';
+import { buildChatMessages, VOICE_STYLE, MOCK_SYSTEM } from '../lib/prompt.js';
+import { BargeIn, SpeechSegmenter } from '../public/audio.js';
 
 test('speakable drops citations, Markdown symbols, tables and links, and ends each line as a sentence', () => {
   const md = '### Cost limit\nThe approved **cost limit** was AED 48.5 million [1].\n\n- Retention is 5% under FIDIC [2]\n\n| a | b |\n|---|---|\n| x | y |\nSee [NRM 2](http://x) too.';
@@ -63,9 +64,53 @@ test('chat prompt: voice style, mock interview system prompt and focus', () => {
   assert.doesNotMatch(plain[0].content, /Voice conversation/);
 });
 
-test('voice tidy prompt carries the transcript and context', () => {
-  const m = buildVoiceTidyMessages('what is nrm to', 'Previous reply');
-  assert.match(m[0].content, /corrected text only/);
-  assert.match(m[1].content, /what is nrm to/);
-  assert.match(m[1].content, /Previous reply/);
+test('voice prompt tells the model the message is speech-to-text', () => {
+  assert.match(VOICE_STYLE, /speech-to-text/);
+  assert.match(VOICE_STYLE, /short first sentence/);
+});
+
+// Simulated AI voice: a level that rises and falls like speech
+const aiLevel = (i) => 0.12 * (0.5 + 0.5 * Math.sin(i / 3));
+
+test('barge-in: the AI voice echoing into the microphone does not interrupt', () => {
+  const b = new BargeIn();
+  let fired = false;
+  for (let i = 0; i < 500; i++) {
+    const out = aiLevel(i);
+    const mic = out * 0.45 + Math.random() * 0.003; // strong echo (no headphones)
+    if (b.push(mic, out)) fired = true;
+  }
+  assert.equal(fired, false);
+});
+
+test('barge-in: the person talking over the echo interrupts within about 0.3 s', () => {
+  const b = new BargeIn();
+  for (let i = 0; i < 200; i++) { const out = aiLevel(i); b.push(out * 0.45, out); } // learn the echo first
+  let firedAt = -1;
+  for (let i = 200; i < 260; i++) {
+    const out = aiLevel(i);
+    const speech = 0.15 * (0.6 + 0.4 * Math.sin(i)); // the person's voice, with syllable dips
+    if (b.push(out * 0.45 + speech, out) && firedAt < 0) firedAt = i - 200;
+  }
+  assert.ok(firedAt >= 0 && firedAt <= 15, `fired after ${firedAt} frames`);
+});
+
+test('barge-in: with no echo (headphones) quiet speech still interrupts, room noise does not', () => {
+  const b = new BargeIn();
+  let fired = false;
+  for (let i = 0; i < 300; i++) if (b.push(0.004, aiLevel(i))) fired = true; // quiet room
+  assert.equal(fired, false);
+  let n = 0;
+  while (!b.push(0.05, aiLevel(n)) && n < 50) n++;
+  assert.ok(n < 15);
+});
+
+test('segmenter says why a segment ended: a pause, or too long', () => {
+  const ends = [];
+  const s = new SpeechSegmenter({ sampleRate: 16000, silenceMs: 200, maxSegmentMs: 1000, onSegment: (_, r) => ends.push(r) });
+  const loud = new Float32Array(320).fill(0.2);
+  const quiet = new Float32Array(320);
+  for (let i = 0; i < 70; i++) s.push(loud); // 1.4 s of speech: cut at 1 s
+  for (let i = 0; i < 20; i++) s.push(quiet);
+  assert.deepEqual(ends, ['max', 'pause']);
 });

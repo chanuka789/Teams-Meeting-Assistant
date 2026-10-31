@@ -145,13 +145,39 @@ export class SpeechSegmenter {
 
     const ended = this.quietRun >= this.silenceFrames;
     const tooLong = this.frames.length >= this.maxFrames;
-    if (ended || tooLong) this.flush();
+    if (ended || tooLong) this.flush(ended ? 'pause' : 'max');
   }
 
-  flush() {
+  // reason: 'pause' (the speaker stopped), 'max' (cut because the segment got too long) or 'manual'
+  flush(reason = 'manual') {
     if (this.inSpeech && this.speechFrames >= this.minSpeechFrames && this.frames.length) {
-      this.onSegment(concat(this.frames));
+      this.onSegment(concat(this.frames), reason);
     }
     this.reset();
+  }
+}
+
+/**
+ * Barge-in detector for voice mode: is the person talking while the AI's voice plays?
+ * The microphone also hears the AI (echo), louder when the AI is louder. This learns how much of the
+ * AI's output level reaches the microphone and only counts sound clearly above that as the person speaking.
+ * push(micLevel, outLevel) per ~20 ms frame (RMS levels); returns true once enough recent frames are speech.
+ */
+export class BargeIn {
+  constructor({ base = 0.006, ratio = 0.3, margin = 2.5, need = 10, window = 16 } = {}) {
+    Object.assign(this, { base, ratio, margin, need, window });
+    this.recent = [];
+  }
+
+  reset() { this.recent = []; }
+
+  push(mic, out) {
+    const expectedEcho = this.ratio * out;
+    const speech = mic > Math.max(this.base * 2.5, expectedEcho * this.margin + this.base);
+    // While the person is quiet, learn how strongly the AI's voice reaches the microphone
+    if (!speech && out > 0.01) this.ratio = Math.min(2, this.ratio * 0.92 + (mic / out) * 0.08);
+    this.recent.push(speech);
+    if (this.recent.length > this.window) this.recent.shift();
+    return this.recent.filter(Boolean).length >= this.need;
   }
 }

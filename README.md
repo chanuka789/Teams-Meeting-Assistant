@@ -50,6 +50,8 @@ Open the app. Because no users exist yet, it shows **Set up your app**: enter yo
 | `DECISION_MODEL` | no | `typesafe/jev-1.14` | Fast decisions (OpenRouter Decisions API): is it a question, competency and source for the search. Empty turns it off |
 | `VOICE_MODEL` | no | `hexgrad/kokoro-82m` | Voice mode: text-to-speech model (users can choose another in Settings) |
 | `VOICE_NAME` | no | `bm_george` | Voice mode: default voice |
+| `VOICE_STT_MODEL` | no | `openai/gpt-transcribe` | Voice mode: speech-to-text for your turns (with RICS word hints) |
+| `VOICE_CHAT_MODEL` | no | `anthropic/claude-haiku-5.5` | Voice mode: fast reply model |
 | `STT_MODEL` | no | `openai/whisper-large-v3-turbo` | Speech-to-text |
 | `STT_LANGUAGE` | no | `en` | |
 

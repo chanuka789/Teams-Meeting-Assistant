@@ -234,8 +234,9 @@ export function combobox({ items, value, ariaLabel, placeholder = 'Search…', o
   function renderValue() {
     const it = items.find((x) => x.value === current);
     if (compact) { valueLabel.textContent = it ? it.label : 'Choose…'; return; }
+    // One line, like the other dropdowns: the name, then a short price (full details are in the list)
     valueLabel.replaceChildren(it
-      ? h('span', { class: 'combo-main' }, h('b', {}, it.label), it.sub && h('span', { class: 'subtle' }, it.sub), tagEls(it.tags))
+      ? h('span', { class: 'combo-line' }, h('span', { class: 'combo-name' }, it.label), (it.short || it.sub) && h('span', { class: 'combo-price' }, it.short || it.sub))
       : h('span', { class: 'subtle' }, 'Choose…'));
   }
 

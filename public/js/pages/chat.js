@@ -103,7 +103,9 @@ export async function renderChat(page, params) {
     h('div', { class: 'composer-actions' }, voiceBtn, stopBtn, sendBtn));
 
   // Voice mode bar: replaces the text box while voice mode is on
-  const orb = h('div', { class: 'voice-orb', 'aria-hidden': 'true' }, h('span'), h('span'), h('span'), h('span'), h('span'));
+  // The orb shows who is talking; tapping it while the AI talks interrupts it
+  const orb = h('button', { type: 'button', class: 'voice-orb', 'aria-label': 'Tap to interrupt', title: 'Tap to interrupt', onclick: () => st.voice?.tapInterrupt() },
+    h('span'), h('span'), h('span'), h('span'), h('span'));
   const voiceStatus = h('b', { class: 'voice-status' }, 'Starting…');
   const voiceHeard = h('div', { class: 'voice-heard' });
   const vPause = button('', { icon: 'mic', variant: 'ghost', size: 'sm', ariaLabel: 'Pause the microphone', onClick: () => {
@@ -548,7 +550,7 @@ export async function renderChat(page, params) {
   async function runAnswer(payload, userMsg = null) {
     inner.querySelectorAll('.msg-ai').forEach((x) => x.querySelector('[aria-label="Regenerate answer"]')?.remove());
     inner.querySelectorAll('.followups').forEach((x) => x.remove());
-    const msg = { role: 'assistant', content: '', sources: [], model: pref('chatModel') || st.models?.defaults.answerModel };
+    const msg = { role: 'assistant', content: '', sources: [], model: st.voice ? pref('voiceChatModel') || st.models?.defaults.voiceChatModel : pref('chatModel') || st.models?.defaults.answerModel };
     const el = assistantEl(msg, true);
     el.update(msg, false);
     inner.append(el);
@@ -565,8 +567,11 @@ export async function renderChat(page, params) {
       const res = await fetch(`/api/chats/${chatId}/messages`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', signal: controller.signal,
         body: JSON.stringify({
-          ...payload, voice: Boolean(voice), model: pref('chatModel') || undefined,
-          reasoning: thinking.disabled ? undefined : thinking.value || undefined, scope: scope.value || 'all', length: length.value,
+          ...payload, voice: Boolean(voice), scope: scope.value || 'all', length: length.value,
+          // Voice mode answers with its own fast model and thinking level (Settings), for quick replies
+          ...(voice
+            ? { model: pref('voiceChatModel') || st.models?.defaults.voiceChatModel || undefined, reasoning: pref('voiceReasoning') || 'none' }
+            : { model: pref('chatModel') || undefined, reasoning: thinking.disabled ? undefined : thinking.value || undefined }),
         }),
       });
       if (!res.ok || !res.body) {
@@ -632,17 +637,19 @@ export async function renderChat(page, params) {
   const VOICE_TEXT = {
     listening: 'Listening… speak when you are ready',
     hearing: 'Listening…',
-    transcribing: 'Got it, checking what you said…',
+    transcribing: 'Got it…',
     review: 'Send this?',
     thinking: 'Thinking…',
-    speaking: 'Speaking… talk to interrupt',
+    speaking: 'Speaking… talk or tap the circle to interrupt',
     paused: 'Microphone paused',
   };
   function renderVoice(state, detail = '') {
     composerWrap.dataset.voice = state;
-    voiceStatus.textContent = state === 'speaking' && pref('voiceInterrupt') === false ? 'Speaking…' : VOICE_TEXT[state] || '';
-    if (state === 'hearing' || state === 'review') voiceHeard.textContent = detail || '';
-    else if (state !== 'transcribing') voiceHeard.textContent = '';
+    voiceStatus.textContent = state === 'speaking' && pref('voiceInterrupt') === false ? 'Speaking… tap the circle to stop'
+      : state === 'hearing' ? `Listening… ${detail}` : VOICE_TEXT[state] || '';
+    // review: the text to check; listening: a short note such as "did not catch that"
+    voiceHeard.textContent = state === 'review' || state === 'listening' ? detail || '' : '';
+    orb.disabled = state !== 'speaking' && state !== 'thinking';
     vSend.hidden = vDiscard.hidden = state !== 'review';
     vDone.hidden = state !== 'hearing';
     vHush.hidden = state !== 'speaking';
@@ -652,10 +659,11 @@ export async function renderChat(page, params) {
     vPause.title = vPause.getAttribute('aria-label');
   }
   const orbBars = [...orb.children];
-  function renderLevel(level, inSpeech) {
-    const lvl = Math.min(1, level * 10);
+  // who: 'you' (microphone) or 'ai' (the voice playing)
+  function renderLevel(level, who) {
+    const lvl = Math.min(1, level * (who === 'ai' ? 6 : 10));
     orbBars.forEach((b, i) => { b.style.transform = `scaleY(${Math.max(0.18, lvl * (0.5 + 0.5 * Math.sin(((i + 1) / 6) * Math.PI)))})`; });
-    orb.classList.toggle('speech', inSpeech);
+    orb.classList.toggle('speech', who === 'you' && lvl > 0.15);
   }
 
   async function enableVoice() {
@@ -669,7 +677,7 @@ export async function renderChat(page, params) {
         mode: st.mode,
         interrupt: pref('voiceInterrupt') !== false,
         autoSend: pref('voiceAutoSend') !== false,
-        getContext: () => [...st.messages].reverse().find((m) => m.role === 'assistant')?.content.slice(-500) || '',
+        pause: pref('voicePause') || 'normal',
         sendTurn: async (text) => {
           if (st.streaming) { stop(); await new Promise((r) => { const t = setInterval(() => { if (!st.streaming) { clearInterval(t); r(); } }, 30); }); }
           input.value = text;

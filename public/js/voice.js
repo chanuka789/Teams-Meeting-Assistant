@@ -1,196 +1,262 @@
-// Voice mode engine for the Chat page: hands-free microphone turns and spoken replies.
-// - Microphone (only while voice mode is on) -> speech detector (VAD) -> each pause is transcribed at once
-// - A longer pause (or "Done") ends the turn: the whole turn is tidied once (technical terms) and sent
-// - The reply is spoken sentence by sentence while it is still being written
-// - Speaking while the reply plays interrupts it (optional)
+// Voice mode engine for the Chat page: hands-free spoken conversation.
+// - Microphone (only while voice mode is on) -> speech detector; a pause (Settings: short / normal / long)
+//   ends the turn, and the whole turn is transcribed at once by an accurate model with RICS vocabulary hints
+// - The reply is spoken sentence by sentence while it is still being written; each sentence's audio streams,
+//   so playback starts on its first bytes, and the next sentence loads while the current one plays
+// - Talking over the reply interrupts it: the AI's own voice (echo) is measured and ignored; tapping the orb also works
 
-import { SpeechSegmenter, resample, encodeWav, bytesToBase64, TARGET_RATE } from '../audio.js';
+import { SpeechSegmenter, BargeIn, rms, resample, encodeWav, bytesToBase64, TARGET_RATE } from '../audio.js';
 import { speakable, takeChunks } from '../voice-text.js';
 import { api } from './api.js';
 
 // 0.1 s of silence, played on the first tap so mobile browsers allow audio playback afterwards
 const SILENT_WAV = `data:audio/wav;base64,${bytesToBase64(encodeWav(new Float32Array(1600), TARGET_RATE))}`;
+export const VOICE_PAUSES = { short: 600, normal: 900, long: 1500 };
+const MAX_TURN_SECONDS = 150;
+
+function concat(parts) {
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
+}
 
 // ---------- spoken replies ----------
-// feed(markdown, final) as the reply streams; chunks are synthesised in order (two ahead) and played one by one.
-function createSpeaker({ onStart, onIdle, onCost, onError }) {
-  const audio = new Audio();
-  audio.preload = 'auto';
-  let queue = [];          // [{ text, p: Promise<url|null> }]
-  let playing = false;
+// Two <audio> players take turns: one plays while the other loads the next sentence. Both go through an
+// analyser, so the session knows how loud the AI is right now (to tell the person's voice from echo).
+function createSpeaker(ctx, { onStart, onIdle, onError }) {
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  analyser.connect(ctx.destination);
+  const buf = new Float32Array(analyser.fftSize);
+  const players = [0, 1].map(() => {
+    const a = new Audio();
+    a.preload = 'auto';
+    ctx.createMediaElementSource(a).connect(analyser);
+    return a;
+  });
+  let queue = [];          // [{ text, player }]
+  let current = null;      // the sentence playing now
   let final = false;
-  let consumed = 0;        // characters of the speakable text already queued
-  let gen = 0;             // bumps on stop(), so late results are ignored
+  let consumed = 0;        // characters of the speakable reply already queued
+  let gen = 0;             // bumps on stop(), so late events are ignored
   let ids = { chatId: null, messageId: null };
+  let errorShown = false;
 
-  function synth(text, myGen) {
-    return fetch('/api/speak', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-      body: JSON.stringify({ text, chatId: ids.chatId, messageId: ids.messageId }),
-    }).then(async (r) => {
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Voice failed (${r.status})`);
-      const cost = Number(r.headers.get('X-Cost'));
-      const blob = await r.blob();
-      if (myGen !== gen) return null;
-      if (cost) onCost?.(cost, ids.messageId);
-      return URL.createObjectURL(blob);
-    }).catch((err) => { if (myGen === gen) onError?.(err); return null; });
-  }
-  function prefetch() {
-    for (const item of queue.slice(0, 2)) if (!item.p) item.p = synth(item.text, gen);
+  const urlFor = (text) => `/api/speak?${new URLSearchParams({ t: text, c: ids.chatId || '', m: ids.messageId || '' })}`;
+  const freePlayer = () => players.find((p) => p !== current?.player && !queue.some((x) => x.player === p));
+  // Give waiting sentences a free player, so their audio is already loading
+  function prepare() {
+    for (const item of queue) {
+      if (item.player) continue;
+      const p = freePlayer();
+      if (!p) break;
+      item.player = p;
+      p.src = urlFor(item.text);
+      p.load();
+    }
   }
   function pump() {
-    if (playing) return;
-    if (!queue.length) { if (final) { final = false; onIdle?.(); } return; }
-    prefetch();
-    const myGen = gen;
-    const item = queue[0];
-    playing = true;
-    item.p.then((url) => {
-      if (myGen !== gen) return;
-      queue.shift();
-      if (!url) { playing = false; pump(); return; }
-      audio.src = url;
-      audio.onended = audio.onerror = () => { URL.revokeObjectURL(url); if (myGen !== gen) return; playing = false; pump(); };
-      audio.play().then(() => onStart?.()).catch(() => { playing = false; pump(); });
-      prefetch();
-    });
+    if (current) return;
+    if (!queue.length) { if (final) { final = false; onIdle(); } return; }
+    prepare();
+    const item = queue.shift();
+    current = item;
+    const p = item.player;
+    const my = gen;
+    const next = () => {
+      if (my !== gen) return;
+      p.onended = p.onerror = null;
+      current = null;
+      pump();
+    };
+    p.onended = next;
+    p.onerror = () => {
+      if (!errorShown) { errorShown = true; onError(new Error('Could not play the voice. Try another voice in Settings.')); }
+      next();
+    };
+    p.play().then(() => { if (my === gen) onStart(); }).catch(() => next());
+    prepare();
   }
   return {
-    unlock() { audio.src = SILENT_WAV; audio.play().catch(() => {}); },
+    unlock() { for (const p of players) { p.src = SILENT_WAV; p.play().catch(() => {}); } },
     begin(chatId) { this.stop(); ids = { chatId, messageId: null }; },
     setMessageId(id) { ids.messageId = id || null; },
     feed(markdown, isFinal) {
       const text = speakable(markdown, isFinal);
       if (text.length < consumed) consumed = text.length;
-      const { chunks, rest } = takeChunks(text.slice(consumed), isFinal);
+      // The first sentence goes out as soon as it is complete, later ones in longer, more natural chunks
+      const { chunks, rest } = takeChunks(text.slice(consumed), isFinal, consumed === 0 ? 12 : 60);
       consumed = text.length - rest.length;
-      for (const c of chunks) queue.push({ text: c, p: null });
+      for (const c of chunks) queue.push({ text: c, player: null });
       if (isFinal) final = true;
-      prefetch();
       pump();
+      prepare();
+    },
+    // How loud the AI's voice is right now (RMS of the last ~20 ms)
+    outLevel() {
+      if (!current) return 0;
+      analyser.getFloatTimeDomainData(buf);
+      return rms(buf);
     },
     stop() {
       gen++;
       queue = [];
-      playing = false;
+      current = null;
       final = false;
       consumed = 0;
-      audio.pause();
-      audio.removeAttribute('src');
+      for (const p of players) {
+        p.onended = p.onerror = null;
+        p.pause();
+        p.removeAttribute('src');
+        p.load(); // stops the download too
+      }
     },
-    get busy() { return playing || queue.length > 0; },
+    get busy() { return Boolean(current) || queue.length > 0; },
   };
 }
 
 // ---------- the voice session ----------
-// opts: { mode: 'chat' | 'mock', sendTurn(text) -> Promise (resolves when the reply has finished streaming),
-//         onInterrupt(), getContext() -> string, onState(state, detail), onLevel(level), interrupt: bool, autoSend: bool }
+// opts: { mode: 'chat' | 'mock', pause: 'short'|'normal'|'long', interrupt, autoSend,
+//         sendTurn(text) -> Promise (resolves when the reply has finished streaming), onInterrupt(),
+//         onState(state, detail), onLevel(level, who: 'you' | 'ai'), onError(err) }
 // States: listening, hearing, transcribing, review, thinking, speaking, paused
 export async function startVoice(opts) {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser cannot use the microphone.');
-  const speaker = createSpeaker({
-    onStart: () => set('speaking'),
-    onIdle: () => { if (state === 'speaking' || state === 'thinking') set('listening'); },
-    onCost: (c, messageId) => opts.onVoiceCost?.(c, messageId),
+  // Created inside the tap, so phones allow sound
+  const ctx = new AudioContext();
+  ctx.resume().catch(() => {});
+  let state = 'listening';
+  const speaker = createSpeaker(ctx, {
+    onStart: () => { if (state === 'thinking') set('speaking'); },
+    onIdle: () => {
+      guardUntil = performance.now() + 300; // the room's echo of the last words
+      bargeIn.reset();
+      recent.length = 0;
+      if (state === 'speaking' || state === 'thinking') set('listening');
+    },
     onError: (err) => opts.onError?.(err),
   });
-  speaker.unlock(); // inside the user's tap
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-  });
-  const ctx = new AudioContext();
-  await ctx.audioWorklet.addModule('/capture-worklet.js');
+  speaker.unlock();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+    });
+    await ctx.audioWorklet.addModule('/capture-worklet.js');
+  } catch (err) {
+    ctx.close().catch(() => {});
+    throw err;
+  }
   const src = ctx.createMediaStreamSource(stream);
   const node = new AudioWorkletNode(ctx, 'capture-processor');
   const mute = ctx.createGain();
   mute.gain.value = 0;
   src.connect(node).connect(mute).connect(ctx.destination);
 
-  // A turn may have pauses: each pause sends that piece for transcription; a longer pause ends the turn
-  const endPauseMs = opts.mode === 'mock' ? 2200 : 1100;
-  let state = 'listening';
+  const pauseMs = () => Math.max(VOICE_PAUSES[opts.pause] || VOICE_PAUSES.normal, opts.mode === 'mock' ? VOICE_PAUSES.long : 0);
   let paused = false;
-  let parts = [];          // Promise<string> per piece, in order
-  let endTimer = null;
-  let replyDone = true;    // the reply has finished streaming (speaking may continue)
-  let silenced = false;    // the candidate interrupted or hushed this reply: speak no more of it
   let closed = false;
+  let replyDone = true;    // the reply has finished streaming (speaking may continue)
+  let silenced = false;    // the person interrupted or hushed this reply: speak no more of it
+  let turn = [];           // audio of this turn (a long answer is cut into 30 s pieces)
+  let turnStart = 0;
+  let ticker = null;
+  let guardUntil = 0;
+  const recent = [];       // the last ~0.5 s of microphone audio while the AI speaks (start of an interruption)
 
-  const BASE_MIN = 0.006;
   const segmenter = new SpeechSegmenter({
     sampleRate: ctx.sampleRate,
-    silenceMs: 700,
-    maxSegmentMs: 25000,
-    minSpeechMs: 300,
-    onSegment: (samples) => onPiece(samples),
+    silenceMs: pauseMs(),
+    maxSegmentMs: 30000,
+    minSpeechMs: 400,
+    startFrames: 4,          // 80 ms of speech within 160 ms starts a turn (gaps between sounds allowed)
+    startWindow: 8,
+    onSegment: (samples, reason) => onSegment(samples, reason),
     onLevel: (level, inSpeech) => {
-      opts.onLevel?.(level, inSpeech);
+      opts.onLevel?.(level, 'you');
       if (inSpeech && !wasSpeech) onSpeechStart();
       wasSpeech = inSpeech;
     },
   });
   let wasSpeech = false;
-  node.port.onmessage = (e) => { if (!paused && !closed) segmenter.push(e.data); };
+  const bargeIn = new BargeIn();
+
+  node.port.onmessage = (e) => {
+    if (paused || closed) return;
+    const frame = e.data;
+    if (state === 'speaking') {
+      // The AI is talking: only clear speech above its echo counts, and it interrupts the AI
+      recent.push(frame);
+      if (recent.length > 25) recent.shift();
+      const out = speaker.outLevel();
+      opts.onLevel?.(out, 'ai');
+      if (opts.interrupt !== false && bargeIn.push(rms(frame), out)) interrupt();
+      return;
+    }
+    if (performance.now() < guardUntil) return;
+    if (state === 'transcribing' || state === 'review') return;
+    segmenter.push(frame);
+  };
 
   function set(s, detail) {
     state = s;
-    // While the reply plays, the microphone needs louder, longer sound to count as speech (less echo)
-    const replying = s === 'speaking' || s === 'thinking';
-    // (at least 200 ms of loud sound within 360 ms, so a short noise or echo does not interrupt)
-    segmenter.minThreshold = replying ? BASE_MIN * 4 : BASE_MIN;
-    segmenter.startFrames = replying ? 10 : 3;
-    segmenter.startWindow = replying ? 18 : 0;
+    clearInterval(ticker);
+    if (s === 'hearing') {
+      // Show how long the turn has been going (useful for long mock interview answers)
+      const tick = () => opts.onState?.('hearing', fmt((performance.now() - turnStart) / 1000));
+      ticker = setInterval(tick, 500);
+      tick();
+      return;
+    }
     opts.onState?.(s, detail);
   }
+  const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
   const busy = () => state === 'thinking' || state === 'speaking';
 
   function onSpeechStart() {
-    clearTimeout(endTimer);
-    if (busy()) {
-      if (!opts.interrupt) return;
-      // The candidate talks over the reply: stop it and listen
-      speaker.stop();
-      silenced = true;
-      if (!replyDone) opts.onInterrupt?.();
-      replyDone = true;
-    }
-    if (state !== 'review' && state !== 'transcribing') set('hearing', partialText());
+    if (state === 'listening') { turnStart = performance.now(); set('hearing'); }
   }
 
-  let partials = [];
-  const partialText = () => partials.filter(Boolean).join(' ');
-  function onPiece(samples) {
-    if (busy() && !opts.interrupt) return;
-    if (state === 'review' || state === 'transcribing') return;
-    const wav = encodeWav(resample(samples, ctx.sampleRate, TARGET_RATE), TARGET_RATE);
-    const i = parts.length;
-    const p = api('POST', '/api/transcribe', { audio: bytesToBase64(wav), format: 'wav' })
-      .then((d) => { partials[i] = (d.text || '').trim(); if (state === 'hearing') opts.onState?.('hearing', partialText()); return partials[i]; })
-      .catch((err) => { opts.onError?.(err); return ''; });
-    parts.push(p);
-    clearTimeout(endTimer);
-    endTimer = setTimeout(endTurn, endPauseMs - 700);
+  function interrupt() {
+    speaker.stop();
+    silenced = true;
+    bargeIn.reset();
+    if (!replyDone) { opts.onInterrupt?.(); replyDone = true; }
+    turn = [];
+    turnStart = performance.now() - recent.length * 20;
+    set('hearing');
+    // Keep the words that started the interruption
+    segmenter.reset();
+    const keep = recent.splice(0);
+    for (const f of keep) segmenter.push(f);
+  }
+
+  function onSegment(samples, reason) {
+    if (paused || state === 'transcribing' || state === 'review') return;
+    turn.push(samples);
+    if (reason === 'max' && turn.length * 30 < MAX_TURN_SECONDS) return; // still talking: keep collecting
+    endTurn();
   }
 
   async function endTurn() {
-    clearTimeout(endTimer);
-    if (!parts.length || state === 'transcribing' || state === 'review') return;
-    const pieces = parts;
-    parts = [];
+    const pieces = turn;
+    turn = [];
+    if (!pieces.length) { if (state === 'hearing') set('listening'); return; }
+    // Spoke while the reply was still loading: drop that reply and answer this instead
+    if (!replyDone) { speaker.stop(); opts.onInterrupt?.(); replyDone = true; }
     set('transcribing');
-    const raw = (await Promise.all(pieces)).filter(Boolean).join(' ').trim();
-    partials = [];
-    if (closed) return;
-    if (!raw) { set('listening'); return; }
-    let text = raw;
+    const wav = encodeWav(resample(concat(pieces), ctx.sampleRate, TARGET_RATE), TARGET_RATE);
+    let text = '';
     try {
-      const d = await api('POST', '/api/voice/tidy', { text: raw, context: opts.getContext?.() || '' });
-      if (d.text) text = d.text;
-    } catch { /* keep what was heard */ }
+      text = (await api('POST', '/api/voice/transcribe', { audio: bytesToBase64(wav), format: 'wav' })).text || '';
+    } catch (err) {
+      opts.onError?.(err);
+    }
     if (closed) return;
-    if (opts.autoSend === false) { set('review', text); return; }
-    submit(text);
+    if (!text.trim()) { set('listening', 'Sorry, I did not catch that. Please say it again.'); return; }
+    if (opts.autoSend === false) { set('review', text.trim()); return; }
+    submit(text.trim());
   }
 
   async function submit(text) {
@@ -202,42 +268,58 @@ export async function startVoice(opts) {
       opts.onError?.(err);
     }
     replyDone = true;
-    // Nothing (left) to say: listen again
     if (state === 'thinking' && !speaker.busy) set('listening');
   }
 
   set('listening');
   return {
-    speaker,
     get state() { return state; },
-    // Called by the chat page when a reply starts / streams / ends
-    replyStarted(chatId) { speaker.begin(chatId); replyDone = false; silenced = false; if (state !== 'speaking') set('thinking'); },
+    // Called by the chat page when a reply starts / streams / ends (typed messages are spoken too)
+    replyStarted(chatId) {
+      speaker.begin(chatId);
+      replyDone = false;
+      silenced = false;
+      bargeIn.reset();
+      if (state !== 'hearing') set('thinking');
+    },
     replyText(markdown, final, messageId) {
       if (messageId) speaker.setMessageId(messageId);
       if (!silenced) speaker.feed(markdown, final);
       if (final) {
         replyDone = true;
-        if (!speaker.busy && (state === 'thinking' || state === 'speaking')) set('listening');
+        if (!speaker.busy && busy()) set('listening');
       }
     },
     replyFailed() { replyDone = true; speaker.stop(); if (busy()) set('listening'); },
     // "Done": end the turn now instead of waiting for the pause
-    finishTurn() { segmenter.flush(); setTimeout(endTurn, 30); },
+    finishTurn() {
+      if (state !== 'hearing') return;
+      segmenter.flush('pause');
+      if (state === 'hearing') endTurn();
+    },
+    // Tap the orb while the AI talks: stop it and listen
+    tapInterrupt() {
+      if (state !== 'speaking' && state !== 'thinking') return;
+      speaker.stop();
+      silenced = true;
+      if (state === 'speaking') { guardUntil = performance.now() + 200; set('listening'); }
+    },
     // Review (auto-send off)
     send(text) { if (text.trim()) submit(text.trim()); else set('listening'); },
     discard() { set('listening'); },
-    // Stop the voice reply (keep listening)
-    hush() { speaker.stop(); silenced = true; if (busy()) set('listening'); },
     setPaused(v) {
       paused = v;
       segmenter.reset();
-      clearTimeout(endTimer);
-      if (v) { parts = []; partials = []; set('paused'); } else set(busy() ? state : 'listening');
+      turn = [];
+      if (v) set('paused'); else set(busy() ? state : 'listening');
     },
-    setOptions(o) { Object.assign(opts, o); },
+    setOptions(o) {
+      Object.assign(opts, o);
+      segmenter.silenceFrames = Math.round(pauseMs() / segmenter.frameMs);
+    },
     stop() {
       closed = true;
-      clearTimeout(endTimer);
+      clearInterval(ticker);
       speaker.stop();
       node.port.onmessage = null;
       stream.getTracks().forEach((t) => t.stop());

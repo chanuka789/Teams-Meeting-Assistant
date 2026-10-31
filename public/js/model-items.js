@@ -24,6 +24,7 @@ export function chatItems(models, defaultId) {
   const item = (m, group) => ({
     value: m.id, label: shortName(m), group,
     sub: m.input == null ? providerOf(m) : `${providerOf(m)} · $${m.input} in / $${m.output} out per 1M tokens`,
+    short: m.input == null ? providerOf(m) : m.input === 0 && m.output === 0 ? 'Free' : `$${m.input} / $${m.output}`,
     tags: tags(m),
   });
   const top = [defaultId, ...RECOMMENDED].filter((id, i, a) => a.indexOf(id) === i)
@@ -39,6 +40,7 @@ export function sttItems(models, defaultId) {
   return [...def, ...models.filter((m) => m.id !== defaultId)].map((m) => ({
     value: m.id, label: shortName(m), group: m.id === defaultId ? 'Default' : providerOf(m),
     sub: `${providerOf(m)} · ${price(m.price)}`, tags: m.id === defaultId ? [{ text: 'Default', kind: 'accent' }] : [],
+    short: !m.price ? providerOf(m) : m.price.perHour != null ? `$${m.price.perHour}/h` : `$${m.price.input} / $${m.price.output}`,
   }));
 }
 
