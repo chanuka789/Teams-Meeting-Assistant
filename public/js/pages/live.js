@@ -9,7 +9,7 @@ import { reasoningChoices } from '../../models.js';
 import { chatItems, REASONING_SHORT, REASONING_LABELS, reasoningSelection } from '../model-items.js';
 import { pref, setPrefs, onPrefsChange, loadModels } from '../state.js';
 import { createOverlay, parseAnswer, answerNodes } from './overlay.js';
-import { ANSWER_STYLES } from '../format.js';
+import { ANSWER_STYLES, isRepeatQuestion } from '../format.js';
 
 const ANSWER_DELAY_MS = 1200; // a question is often cut into several segments: wait for a short gap
 const METER_BARS = 14;
@@ -69,6 +69,7 @@ export function createLivePage({ onListeningChange }) {
     const q = askInput.value.trim();
     if (!q) return;
     askInput.value = '';
+    rememberAnswered(q);
     getAnswer(q, 'typed');
   } },
     h('div', { class: 'input-icon' }, icon('message-square-text'), askInput),
@@ -245,6 +246,7 @@ export function createLivePage({ onListeningChange }) {
   function clearAnswers() {
     answersList.replaceChildren();
     st.answers = [];
+    st.answered = []; // after clearing, a question asked again gets a new answer
     overlay.update();
     updateCount();
   }
@@ -353,11 +355,15 @@ export function createLivePage({ onListeningChange }) {
       return;
     }
     addSpend(data.cost);
-    if (!data.question) return;
+    // Two detections can run at once: skip a question another one has just answered
+    if (!data.question || isRepeatQuestion(data.question, st.answered)) return;
     lineEls.forEach((l) => l.classList.add('question'));
-    st.answered.push(data.question);
-    if (st.answered.length > 5) st.answered.shift();
+    rememberAnswered(data.question);
     getAnswer(data.question, 'detected');
+  }
+  function rememberAnswered(question) {
+    st.answered.push(question);
+    if (st.answered.length > 5) st.answered.shift();
   }
 
   function queueDetection(text, line) {

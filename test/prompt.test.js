@@ -65,3 +65,16 @@ test('chat prompt carries numbered excerpts, history and length', async () => {
   assert.deepEqual(m.slice(1).map((x) => x.role), ['user', 'assistant', 'user']);
   assert.equal(m.at(-1).content, 'What was the cost limit?');
 });
+
+test('repeated questions are recognised, new follow-ups are not', async () => {
+  const { isRepeatQuestion, buildTidyMessages } = await import('../lib/prompt.js');
+  const answered = ['What is the RIBA Plan of Work?', 'What is NRM 2?'];
+  assert.ok(isRepeatQuestion('Can you explain the RIBA Plan of Work?', answered));
+  assert.ok(isRepeatQuestion('what is NRM 2', answered));
+  assert.ok(!isRepeatQuestion('How did you use NRM 2 on your project?', answered));
+  assert.ok(!isRepeatQuestion('What is POMI?', answered));
+  assert.ok(!isRepeatQuestion('Anything?', []));
+  const msgs = buildTidyMessages({ latest: 'Thanks, good.', transcript: 'x', answered });
+  assert.match(msgs[1].content, /Questions already answered/);
+  assert.match(msgs[0].content, /NONE/);
+});
