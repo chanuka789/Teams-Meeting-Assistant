@@ -21,12 +21,15 @@ export function parseAnswer(text) {
 
 // Answer styles the user can choose (prompt rules per style live in lib/prompt.js)
 export const ANSWER_STYLES = [
+  { id: 'keywords', label: 'Keywords only (fastest)', short: 'Style: Keywords', hint: '5–8 key terms on one line, no thinking' },
   { id: 'points', label: 'Points only', short: 'Style: Points only', hint: '4–6 short bullet points' },
   { id: 'brief', label: 'Short description only', short: 'Style: Short description', hint: '2–3 sentences, no bullets' },
   { id: 'balanced', label: 'Description + 3–4 points', short: 'Style: Description + points', hint: '1–2 sentences, then 3–4 points' },
   { id: 'detailed', label: 'Detailed', short: 'Style: Detailed', hint: '2 sentences, then 5–6 points' },
 ];
 export const DEFAULT_ANSWER_STYLE = 'balanced';
+// Styles answered as fast as possible: lowest thinking level, no routing call, smaller context
+export const FAST_STYLES = new Set(['keywords']);
 
 // ---------- repeated questions (shared by /api/detect and the Live page) ----------
 
