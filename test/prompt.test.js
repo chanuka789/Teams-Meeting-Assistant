@@ -78,3 +78,12 @@ test('repeated questions are recognised, new follow-ups are not', async () => {
   assert.match(msgs[1].content, /Questions already answered/);
   assert.match(msgs[0].content, /NONE/);
 });
+
+test('keywords style: one line of key terms, marked as fast', async () => {
+  const { FAST_STYLES, ANSWER_STYLES } = await import('../public/js/format.js');
+  assert.ok(ANSWER_STYLES.some((s) => s.id === 'keywords'));
+  assert.ok(FAST_STYLES.has('keywords') && !FAST_STYLES.has('balanced'));
+  const sys = buildAnswerMessages({ latest: 'x', style: 'keywords' })[0].content;
+  assert.match(sys, /ONLY 5-8 keywords/);
+  assert.match(sys, /<keyword> · <keyword>/);
+});
